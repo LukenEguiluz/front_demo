@@ -1,0 +1,72 @@
+<div class="app">
+  <aside class="sidebar">
+    <a routerLink="/" class="logo-link">
+      <img src="logo_epione_colors_shadow.png" alt="Epione" class="logo-img" />
+    </a>
+
+    <nav class="menu">
+      <a routerLink="/" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}" class="menu-item">
+        <span class="material-icons nav-icon">dashboard</span>
+        <span class="menu-text">
+          <span class="material-icons menu-arrow">arrow_forward_ios</span>
+          Inicio
+        </span>
+      </a>
+      <a routerLink="/inventario" routerLinkActive="active-link" class="menu-item">
+        <span class="material-icons nav-icon">inventory_2</span>
+        <span class="menu-text">
+          <span class="material-icons menu-arrow">arrow_forward_ios</span>
+          Inventario RFID
+        </span>
+      </a>
+      <a routerLink="/reportes" routerLinkActive="active-link" class="menu-item">
+        <span class="material-icons nav-icon">timeline</span>
+        <span class="menu-text">
+          <span class="material-icons menu-arrow">arrow_forward_ios</span>
+          Reportes
+        </span>
+      </a>
+      <a routerLink="/config" routerLinkActive="active-link" class="menu-item">
+        <span class="material-icons nav-icon">settings</span>
+        <span class="menu-text">
+          <span class="material-icons menu-arrow">arrow_forward_ios</span>
+          Configuración
+        </span>
+      </a>
+      <a routerLink="/icu-interventions" routerLinkActive="active-link" class="menu-item">
+        <span class="material-icons nav-icon">monitor_heart</span>
+        <span class="menu-text">
+          <span class="material-icons menu-arrow">arrow_forward_ios</span>
+          Preparación de cirugía
+        </span>
+      </a>
+      <div class="menu-group" [class.active-link]="isDemoTunelActive">
+        <div class="menu-item menu-item-label">
+          <span class="material-icons nav-icon">nfc</span>
+          <span class="menu-text">
+            <span class="material-icons menu-arrow">arrow_forward_ios</span>
+            Demo Tunel RFID
+          </span>
+        </div>
+        <a routerLink="/demo-tunel-rfid/lectura" routerLinkActive="active-link" class="menu-item menu-subitem">
+          <span class="material-icons nav-icon">read_more</span>
+          <span class="menu-text">
+            <span class="material-icons menu-arrow">arrow_forward_ios</span>
+            Lectura
+          </span>
+        </a>
+      </div>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <header class="topbar">
+      <div class="topbar-title">Panel Epione</div>
+      <div class="topbar-user">Usuario</div>
+    </header>
+
+    <section class="screen">
+      <router-outlet />
+    </section>
+  </main>
+</div>

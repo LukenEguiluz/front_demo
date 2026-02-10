@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Epione - Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="logo">epione doHealth</div>
+      <nav class="menu">
+        <a href="#home" class="menu-item active">Inicio</a>
+        <a href="#inventario" class="menu-item">Inventario RFID</a>
+        <a href="#reportes" class="menu-item">Reportes</a>
+        <a href="#config" class="menu-item">Configuración</a>
+        <a href="#demo-tunel-rfid" class="menu-item">Demo Tunel RFID</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <header class="topbar">
+        <div class="topbar-title">Panel Epione</div>
+        <div class="topbar-user">Usuario</div>
+      </header>
+
+      <section id="home" class="screen screen-active">
+        <h1>Bienvenido a Epione</h1>
+        <p>Selecciona una opción del menú lateral.</p>
+      </section>
+
+      <section id="inventario" class="screen">
+        <h1>Inventario RFID</h1>
+        <!-- contenido -->
+      </section>
+
+      <section id="reportes" class="screen">
+        <h1>Reportes</h1>
+        <!-- contenido -->
+      </section>
+
+      <section id="config" class="screen">
+        <h1>Configuración</h1>
+        <!-- contenido -->
+      </section>
+
+      <section id="demo-tunel-rfid" class="screen">
+        <h1>Demo Tunel RFID</h1>
+        <p>Aquí va la demo de lectura del túnel RFID.</p>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
