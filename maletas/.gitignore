@@ -1,0 +1,24 @@
+# Node
+node_modules/
+
+# Angular / epione-app
+epione-app/dist/
+epione-app/.angular/
+epione-app/node_modules/
+
+# IDEs
+.idea/
+*.sublime-workspace
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

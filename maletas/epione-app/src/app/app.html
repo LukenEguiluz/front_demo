@@ -1,48 +1,39 @@
-<div class="app" [class.sidebar-open]="sidebarOpen">
-  <button type="button" class="menu-toggle" aria-label="Abrir menú" (click)="toggleSidebar()">
-    <span class="material-icons">menu</span>
-  </button>
-  <div class="sidebar-backdrop" (click)="closeSidebar()" [class.visible]="sidebarOpen" aria-hidden="true"></div>
+<div class="app">
   <aside class="sidebar">
-    <div class="sidebar-header">
-      <a routerLink="/" class="logo-link" (click)="closeSidebar()">
-        <img src="logo_epione_colors_shadow.png" alt="Epione" class="logo-img" />
-      </a>
-      <button type="button" class="sidebar-close" aria-label="Cerrar menú" (click)="closeSidebar()">
-        <span class="material-icons">close</span>
-      </button>
-    </div>
+    <a routerLink="/" class="logo-link">
+      <img src="logo_epione_colors_shadow.png" alt="Epione" class="logo-img" />
+    </a>
 
     <nav class="menu">
-      <a routerLink="/" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}" class="menu-item" (click)="closeSidebar()">
+      <a routerLink="/" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}" class="menu-item">
         <span class="material-icons nav-icon">dashboard</span>
         <span class="menu-text">
           <span class="material-icons menu-arrow">arrow_forward_ios</span>
           Inicio
         </span>
       </a>
-      <a routerLink="/inventario" routerLinkActive="active-link" class="menu-item" (click)="closeSidebar()">
+      <a routerLink="/inventario" routerLinkActive="active-link" class="menu-item">
         <span class="material-icons nav-icon">inventory_2</span>
         <span class="menu-text">
           <span class="material-icons menu-arrow">arrow_forward_ios</span>
           Inventario RFID
         </span>
       </a>
-      <a routerLink="/reportes" routerLinkActive="active-link" class="menu-item" (click)="closeSidebar()">
+      <a routerLink="/reportes" routerLinkActive="active-link" class="menu-item">
         <span class="material-icons nav-icon">timeline</span>
         <span class="menu-text">
           <span class="material-icons menu-arrow">arrow_forward_ios</span>
           Reportes
         </span>
       </a>
-      <a routerLink="/config" routerLinkActive="active-link" class="menu-item" (click)="closeSidebar()">
+      <a routerLink="/config" routerLinkActive="active-link" class="menu-item">
         <span class="material-icons nav-icon">settings</span>
         <span class="menu-text">
           <span class="material-icons menu-arrow">arrow_forward_ios</span>
           Configuración
         </span>
       </a>
-      <a routerLink="/icu-interventions" routerLinkActive="active-link" class="menu-item" (click)="closeSidebar()">
+      <a routerLink="/icu-interventions" routerLinkActive="active-link" class="menu-item">
         <span class="material-icons nav-icon">monitor_heart</span>
         <span class="menu-text">
           <span class="material-icons menu-arrow">arrow_forward_ios</span>
@@ -57,18 +48,11 @@
             Demo Tunel RFID
           </span>
         </div>
-        <a routerLink="/demo-tunel-rfid/lectura" routerLinkActive="active-link" class="menu-item menu-subitem" (click)="closeSidebar()">
+        <a routerLink="/demo-tunel-rfid/lectura" routerLinkActive="active-link" class="menu-item menu-subitem">
           <span class="material-icons nav-icon">read_more</span>
           <span class="menu-text">
             <span class="material-icons menu-arrow">arrow_forward_ios</span>
             Lectura
-          </span>
-        </a>
-        <a routerLink="/demo-tunel-rfid/maleta" routerLinkActive="active-link" class="menu-item menu-subitem" (click)="closeSidebar()">
-          <span class="material-icons nav-icon">work</span>
-          <span class="menu-text">
-            <span class="material-icons menu-arrow">arrow_forward_ios</span>
-            Maleta
           </span>
         </a>
       </div>

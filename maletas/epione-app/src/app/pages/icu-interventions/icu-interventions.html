@@ -1,0 +1,100 @@
+<div class="icu-page">
+  <div class="header">
+    <h1>Preparación de cirugía</h1>
+  </div>
+
+  <div class="filters-card">
+    <div class="filters-row">
+      <div class="filter-group">
+        <label for="estado">Programar cirugía Filtro</label>
+        <select id="estado" [(ngModel)]="estadoSeleccionado">
+          <option value="PROGRAMADA">Programada</option>
+          <option value="EN_PROCESO">En proceso</option>
+          <option value="FINALIZADA">Finalizada</option>
+          <option value="CANCELADA">Cancelada</option>
+        </select>
+      </div>
+
+      <div class="filter-group filter-search">
+        <label for="busqueda">Buscar</label>
+        <input
+          id="busqueda"
+          type="text"
+          placeholder="Filtrar cirugías..."
+          [(ngModel)]="textoFiltro"
+        />
+      </div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <table *ngIf="paginaActualCirugias.length > 0; else emptyState">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Paciente</th>
+          <th>Procedimiento</th>
+          <th>Estado</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let c of paginaActualCirugias">
+          <td>{{ c.id }}</td>
+          <td>{{ c.paciente }}</td>
+          <td>{{ c.procedimiento }}</td>
+          <td>{{ c.estado }}</td>
+          <td>{{ c.fecha }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <ng-template #emptyState>
+      <div class="empty-state">
+        No hay cirugías con este estado.
+      </div>
+    </ng-template>
+  </div>
+
+  <div class="paginator">
+    <div class="paginator-left">
+      <span>Items per page:</span>
+      <select
+        [(ngModel)]="itemsPerPage"
+        (ngModelChange)="cambiarItemsPerPage($event)"
+      >
+        <option *ngFor="let opt of itemsPerPageOptions" [value]="opt">
+          {{ opt }}
+        </option>
+      </select>
+      <span class="paginator-info">{{ paginatorInfo }}</span>
+    </div>
+
+    <div class="paginator-right">
+      <button
+        (click)="irPrimeraPagina()"
+        [disabled]="currentPage === 1 || totalItems === 0"
+      >
+        «
+      </button>
+      <button
+        (click)="irPaginaAnterior()"
+        [disabled]="currentPage === 1 || totalItems === 0"
+      >
+        ‹
+      </button>
+      <button
+        (click)="irPaginaSiguiente()"
+        [disabled]="currentPage === totalPages || totalItems === 0"
+      >
+        ›
+      </button>
+      <button
+        (click)="irUltimaPagina()"
+        [disabled]="currentPage === totalPages || totalItems === 0"
+      >
+        »
+      </button>
+    </div>
+  </div>
+</div>

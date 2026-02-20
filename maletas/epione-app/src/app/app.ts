@@ -8,19 +8,8 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
   styleUrl: './app.css'
 })
 export class App {
-  sidebarOpen = false;
-
   constructor(private router: Router) {}
-
   get isDemoTunelActive(): boolean {
     return this.router.url.includes('demo-tunel-rfid');
-  }
-
-  toggleSidebar(): void {
-    this.sidebarOpen = !this.sidebarOpen;
-  }
-
-  closeSidebar(): void {
-    this.sidebarOpen = false;
   }
 }

@@ -1,0 +1,95 @@
+/* styles.css */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  background: #f3f5f7;
+  color: #333;
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 260px;
+  background: #0b1f3b;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 30px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-item {
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: #d0d7e2;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.menu-item.active {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+/* Contenido */
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  height: 56px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topbar-title {
+  font-weight: 500;
+}
+
+.topbar-user {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.screen {
+  display: none;
+  padding: 24px;
+}
+
+.screen-active {
+  display: block;
+}
+
+h1 {
+  margin-bottom: 12px;
+}

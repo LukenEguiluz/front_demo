@@ -1,0 +1,240 @@
+<div class="lectura-page">
+  <header class="page-header">
+    <h1 class="page-title">Lectura – Túnel RFID</h1>
+  </header>
+
+  <!-- Config API (colapsable) -->
+  <details class="card config-card">
+    <summary class="config-summary">Configuración API</summary>
+    <div class="config-body">
+      <div class="config-row">
+        <label for="apiBase">URL base del backend</label>
+        <div class="input-group">
+          <input
+            id="apiBase"
+            type="text"
+            placeholder="http://rfid.leyluz.com"
+            [(ngModel)]="apiBaseUrl"
+            (keyup.enter)="saveBaseUrl()"
+          />
+          <button type="button" class="btn btn-primary" (click)="saveBaseUrl()">Guardar y cargar</button>
+        </div>
+      </div>
+      @if (error) {
+        <div class="error-msg">{{ error }}</div>
+      }
+    </div>
+  </details>
+
+  <!-- Lector y controles principales -->
+  @if (selectedReaderId) {
+    <div class="main-section">
+      <div class="card reader-card">
+        <div class="reader-header">
+          <div class="field">
+            <label for="reader">Lector</label>
+            <select id="reader" [(ngModel)]="selectedReaderId" (ngModelChange)="onReaderChange()" [disabled]="isReading">
+              @for (r of readers; track r.id) {
+                <option [value]="r.id">{{ r.name || r.id }}</option>
+              }
+            </select>
+          </div>
+          @if (readerStatus) {
+            <div class="status-badges">
+              <span class="badge" [class.badge-ok]="readerStatus.connected">
+                <span class="badge-dot"></span>
+                {{ readerStatus.connected ? 'Conectado' : 'Desconectado' }}
+              </span>
+              <span class="badge" [class.badge-ok]="readerStatus.reading">
+                <span class="badge-dot"></span>
+                {{ readerStatus.reading ? 'Leyendo' : 'Detenido' }}
+              </span>
+            </div>
+          }
+        </div>
+
+        <div class="controls-section">
+          <div class="controls-primary">
+            <button
+              type="button"
+              class="btn btn-success btn-large"
+              (click)="startReading()"
+              [disabled]="isReading"
+            >
+              <span class="material-icons">play_arrow</span>
+              Iniciar lectura
+            </button>
+            <button
+              type="button"
+              class="btn btn-warn btn-large"
+              (click)="stopReading()"
+              [disabled]="!isReading"
+            >
+              <span class="material-icons">stop</span>
+              Detener lectura
+            </button>
+          </div>
+          <div class="controls-config">
+            <span class="controls-label">Mantenimiento</span>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              (click)="resetReader()"
+              [disabled]="isReading"
+              title="Reset conexión"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              (click)="rebootReader()"
+              [disabled]="isReading"
+              title="Reboot completo"
+            >
+              Reboot
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary btn-sm"
+              (click)="resetAntennas()"
+              [disabled]="isReading"
+              title="Reset antenas"
+            >
+              Reset antenas
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats y lista de tags -->
+      @if (isReading || tagList.length > 0) {
+        <div class="card tags-card">
+          <div class="tags-header">
+            <h2 class="card-title">Tags RFID detectados</h2>
+            <div class="stats-row">
+              <div class="stat">
+                <span class="stat-value">{{ uniqueCount }}</span>
+                <span class="stat-label">Únicos</span>
+              </div>
+              <div class="stat">
+                <span class="stat-value">{{ totalReads }}</span>
+                <span class="stat-label">Total lecturas</span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                (click)="clearTags()"
+                [disabled]="isReading"
+              >
+                Limpiar contadores
+              </button>
+            </div>
+          </div>
+          @if (tagList.length === 0 && isReading) {
+            <p class="muted waiting-msg">
+              <span class="material-icons spin">sync</span>
+              Esperando tags...
+            </p>
+          } @else if (tagList.length > 0) {
+            <div class="tags-table-wrap">
+              <table class="tags-table">
+                <thead>
+                  <tr>
+                    <th>Tag RFID</th>
+                    <th>Lecturas</th>
+                    <th>Última vez</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (t of tagList; track t.id) {
+                    <tr>
+                      <td class="tag-id">{{ t.id }}</td>
+                      <td>{{ t.count }}</td>
+                      <td class="tag-time">{{ t.lastSeen }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      }
+
+      <!-- Antenas -->
+      <details class="card">
+        <summary class="card-title">Antenas</summary>
+        @if (filteredAntennas().length === 0) {
+          <p class="muted">Sin antenas o no cargadas.</p>
+        } @else {
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nombre</th>
+                  <th>Activa</th>
+                  <th>Tx (dBm)</th>
+                  <th>Rx (dBm)</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (a of filteredAntennas(); track a.id) {
+                  <tr>
+                    <td>{{ a.id }}</td>
+                    <td>{{ a.name || '-' }}</td>
+                    <td>{{ a.enabled ? 'Sí' : 'No' }}</td>
+                    <td>{{ a.txPowerDbm ?? '-' }}</td>
+                    <td>{{ a.rxSensitivityDbm ?? '-' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </details>
+
+      <!-- Eventos raw (colapsable) -->
+      <details class="card events-card">
+        <summary class="card-title">
+          Eventos en tiempo real (SSE / WebSocket)
+          @if (sseConnected) {
+            <span class="status-dot connected"></span>
+            <span class="sse-status">Conectado</span>
+          }
+          <span class="events-count">{{ eventsReceived }} eventos recibidos</span>
+        </summary>
+        <div class="sse-controls">
+          @if (!isReading) {
+            @if (!sseConnected) {
+              <button type="button" class="btn btn-primary" (click)="connectRealtime()">Conectar stream manual</button>
+            } @else {
+              <button type="button" class="btn btn-warn" (click)="disconnectRealtime()">Desconectar</button>
+            }
+          }
+          <button type="button" class="btn btn-secondary" (click)="clearEvents()">Limpiar eventos</button>
+        </div>
+        <div class="events-log">
+          @if (events.length === 0) {
+            <p class="muted">Sin eventos. Los eventos se muestran al iniciar la lectura.</p>
+          } @else {
+            @for (ev of events; track ev.time + $index) {
+              <div class="event-line">
+                <span class="event-time">{{ ev.time }}</span>
+                <pre class="event-data">{{ ev.data | json }}</pre>
+              </div>
+            }
+          }
+        </div>
+      </details>
+    </div>
+  } @else {
+    <div class="card">
+      @if (loading) {
+        <p class="muted">Cargando lectores...</p>
+      } @else {
+        <p class="muted">Configura la URL del API y haz clic en "Guardar y cargar" para ver los lectores.</p>
+      }
+    </div>
+  }
+</div>
