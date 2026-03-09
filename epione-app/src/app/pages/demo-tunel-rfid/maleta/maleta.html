@@ -7,7 +7,7 @@
     <summary class="config-summary">Configuración API</summary>
     <div class="config-body">
       <div class="config-row">
-        <label for="apiBase">URL base del backend</label>
+        <label for="apiBase">URL túnel RFID (lectores)</label>
         <div class="input-group">
           <input
             id="apiBase"
@@ -19,8 +19,25 @@
           <button type="button" class="btn btn-primary" (click)="saveBaseUrl()">Guardar y cargar</button>
         </div>
       </div>
+      <div class="config-row">
+        <label for="maletasApiUrl">URL API Maletas (guardar maletas y productos)</label>
+        <div class="input-group">
+          <input
+            id="maletasApiUrl"
+            type="text"
+            placeholder="Vacío = proxy a backend (puerto 3000)"
+            [(ngModel)]="maletasApiUrl"
+            (keyup.enter)="saveMaletasApiUrl()"
+          />
+          <button type="button" class="btn btn-primary" (click)="saveMaletasApiUrl()">Guardar y cargar</button>
+        </div>
+        <p class="config-hint">Si está definida, las maletas se guardan en el backend (nombre, relación con productos RFID: referencia, descripción, lote, caducidad).</p>
+      </div>
       @if (error) {
         <div class="error-msg">{{ error }}</div>
+      }
+      @if (excelError) {
+        <div class="error-msg">{{ excelError }}</div>
       }
     </div>
   </details>
@@ -54,11 +71,30 @@
           <span class="material-icons">upload_file</span>
           Cargar .txt
         </button>
+        <button type="button" class="btn btn-primary btn-sm" (click)="exportToExcel()" [disabled]="excelLoading" title="Descargar maletas y relaciones (Excel)">
+          <span class="material-icons">{{ excelLoading ? 'hourglass_empty' : 'table_chart' }}</span>
+          Descargar Excel
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" (click)="excelFileInput.click()" [disabled]="excelLoading" title="Carga masiva desde Excel">
+          <span class="material-icons">upload_file</span>
+          Cargar Excel
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" (click)="downloadExcelTemplate()" title="Descargar plantilla con instrucciones">
+          <span class="material-icons">description</span>
+          Descargar plantilla
+        </button>
         <input
           #fileInput
           type="file"
           accept=".txt,text/plain"
           (change)="onMaletasFileSelected($event)"
+          style="display: none"
+        />
+        <input
+          #excelFileInput
+          type="file"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          (change)="onExcelFileSelected($event)"
           style="display: none"
         />
         @if (!showCreateMaleta) {
@@ -68,10 +104,22 @@
           </button>
         }
       </div>
+      @if (excelLoading) {
+        <p class="muted">Exportando / importando Excel…</p>
+      }
     </div>
 
     @if (showCreateMaleta) {
       <div class="create-maleta-form">
+        <div class="form-row">
+          <label>Nombre de la maleta</label>
+          <input
+            type="text"
+            placeholder="Ej. Maleta quirúrgica 1"
+            [(ngModel)]="newMaletaNombre"
+            class="nombre-input"
+          />
+        </div>
         <div class="form-row">
           <label>RFID maestro (la maleta)</label>
           <div class="input-group">
@@ -98,7 +146,7 @@
         </div>
 
         <div class="form-row">
-          <label>Productos (RFIDs dentro de la maleta)</label>
+          <label>Productos (RFID + referencia, descripción, lote, caducidad)</label>
           <div class="products-add">
             <input
               type="text"
@@ -106,6 +154,10 @@
               [(ngModel)]="newProductRfidInput"
               (keyup.enter)="addProductManual()"
             />
+            <input type="text" placeholder="Referencia" [(ngModel)]="newProductReferencia" class="product-ref" />
+            <input type="text" placeholder="Descripción" [(ngModel)]="newProductDescripcion" class="product-desc" />
+            <input type="text" placeholder="Lote" [(ngModel)]="newProductLote" class="product-lote" />
+            <input type="text" placeholder="Caducidad (fecha)" [(ngModel)]="newProductCaducidad" class="product-caducidad" />
             <button type="button" class="btn btn-secondary btn-sm" (click)="addProductManual()">Añadir</button>
             @if (tagList.length > 0) {
               <span class="input-hint">De lectura:</span>
@@ -115,7 +167,7 @@
                     type="button"
                     class="btn btn-secondary btn-sm tag-pill"
                     (click)="addProductFromTag(t.id)"
-                    [disabled]="newMaletaProductRfids.includes(t.id)"
+                    [disabled]="isProductInNewMaleta(t.id)"
                   >
                     {{ t.id.length > 16 ? t.id.slice(0, 12) + '…' : t.id }}
                   </button>
@@ -123,12 +175,17 @@
               }
             }
           </div>
-          @if (newMaletaProductRfids.length > 0) {
-            <ul class="product-list">
-              @for (rfid of newMaletaProductRfids; track rfid) {
-                <li>
-                  <span class="tag-id">{{ rfid }}</span>
-                  <button type="button" class="btn-icon" (click)="removeProduct(rfid)" title="Quitar">×</button>
+          @if (newMaletaProductos.length > 0) {
+            <ul class="product-list product-list-detailed">
+              @for (p of newMaletaProductos; track p.rfid) {
+                <li class="product-list-item">
+                  <span class="tag-id">{{ p.rfid }}</span>
+                  @if (useBackend) {
+                    <span class="product-meta">Ref: {{ p.referencia || '–' }}</span>
+                    <span class="product-meta">Lote: {{ p.lote || '–' }}</span>
+                    <span class="product-meta">Cad: {{ p.caducidad || '–' }}</span>
+                  }
+                  <button type="button" class="btn-icon" (click)="removeProduct(p.rfid)" title="Quitar">×</button>
                 </li>
               }
             </ul>
@@ -207,10 +264,13 @@
 
       <div class="maletas-list">
         @for (m of maletas; track m.id) {
-          <details class="maleta-item" [class.semaphore-blue]="getMaletaStatus(m) === 'blue'" [class.semaphore-yellow]="getMaletaStatus(m) === 'yellow'" [class.semaphore-green]="getMaletaStatus(m) === 'green'" [class.semaphore-red]="getMaletaStatus(m) === 'red'">
+          <details class="maleta-item" [class.semaphore-blue]="getMaletaStatus(m) === 'blue'" [class.semaphore-yellow]="getMaletaStatus(m) === 'yellow'" [class.semaphore-green]="getMaletaStatus(m) === 'green'" [class.semaphore-red]="getMaletaStatus(m) === 'red'" (toggle)="onMaletaToggle(m, $event)">
             <summary>
               <span class="semaphore maleta-semaphore" [attr.data-status]="getMaletaStatus(m)" [title]="semaphoreTitle(getMaletaStatus(m))"></span>
               <span class="material-icons">work</span>
+              @if (m.nombre) {
+                <span class="maleta-nombre">{{ m.nombre }}</span>
+              }
               <span class="maleta-master">{{ m.masterRfid }}</span>
               <span class="maleta-count">{{ m.productRfids.length }} producto(s)</span>
               <span class="maleta-read-summary">
@@ -234,16 +294,6 @@
                 <span class="material-icons">delete</span>
               </button>
             </summary>
-            @if (getMaletaStatus(m) === 'blue' && getMaletaMissing(m).length > 0) {
-              <div class="maleta-missing">
-                <strong>RFID no leídos:</strong>
-                <ul>
-                  @for (rfid of getMaletaMissing(m); track rfid) {
-                    <li class="tag-id">{{ rfid }}</li>
-                  }
-                </ul>
-              </div>
-            }
             <ul class="maleta-products maleta-expected-list">
               <li class="expected-item" [class.read]="isTagRead(m.masterRfid)">
                 <span class="tag-id"><span class="expected-label">Maestro:</span> {{ m.masterRfid }}</span>
@@ -255,20 +305,19 @@
               @for (rfid of m.productRfids; track rfid) {
                 <li class="expected-item" [class.read]="isTagRead(rfid)" [class.caducado]="isProductExpired(m, rfid)">
                   <span class="tag-id">{{ rfid }}</span>
+                  @if (getProductoInfo(m, rfid); as prod) {
+                    <span class="producto-meta">Ref: {{ prod.referencia || '–' }} · Lote: {{ prod.lote || '–' }} · Cad: {{ prod.caducidad || '–' }}</span>
+                  }
                   <span class="read-badge" [class.leido]="isTagRead(rfid)" [class.no-leido]="!isTagRead(rfid)">
                     <span class="material-icons">{{ isTagRead(rfid) ? 'check_circle' : 'cancel' }}</span>
                     {{ isTagRead(rfid) ? 'Leído' : 'No leído' }}
                   </span>
-                  <button
-                    type="button"
-                    class="btn-caducado btn-sm"
-                    (click)="toggleProductExpired(m, rfid, $event)"
-                    [class.active]="isProductExpired(m, rfid)"
-                    title="Marcar producto como caducado"
-                  >
-                    <span class="material-icons">{{ isProductExpired(m, rfid) ? 'event_busy' : 'event_available' }}</span>
-                    {{ isProductExpired(m, rfid) ? 'Caducado' : 'Caduco' }}
-                  </button>
+                  @if (isProductExpired(m, rfid)) {
+                    <span class="caducidad-badge" title="Caducado por fecha del sistema">
+                      <span class="material-icons">event_busy</span>
+                      Caducado
+                    </span>
+                  }
                 </li>
               }
             </ul>

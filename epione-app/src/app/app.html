@@ -49,6 +49,13 @@
           Preparación de cirugía
         </span>
       </a>
+      <a routerLink="/db" routerLinkActive="active-link" class="menu-item" (click)="closeSidebar()">
+        <span class="material-icons nav-icon">database</span>
+        <span class="menu-text">
+          <span class="material-icons menu-arrow">arrow_forward_ios</span>
+          DB
+        </span>
+      </a>
       <div class="menu-group" [class.active-link]="isDemoTunelActive">
         <div class="menu-item menu-item-label">
           <span class="material-icons nav-icon">nfc</span>
@@ -69,6 +76,13 @@
           <span class="menu-text">
             <span class="material-icons menu-arrow">arrow_forward_ios</span>
             Maleta
+          </span>
+        </a>
+        <a routerLink="/demo-tunel-rfid/maletadb" routerLinkActive="active-link" class="menu-item menu-subitem" (click)="closeSidebar()">
+          <span class="material-icons nav-icon">storage</span>
+          <span class="menu-text">
+            <span class="material-icons menu-arrow">arrow_forward_ios</span>
+            Maleta DB
           </span>
         </a>
       </div>

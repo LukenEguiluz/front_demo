@@ -1,0 +1,833 @@
+<div class="maleta-page">
+  <header class="page-header">
+    @if (isDbPage) {
+      <h1 class="page-title">DB</h1>
+      <p class="page-subtitle">Productos en la base de datos y maletas (sube asociaciones con Excel).</p>
+    } @else {
+      <h1 class="page-title">Maleta DB – Túnel RFID</h1>
+      <p class="page-subtitle">Maletas guardadas en el backend (nombre, productos con referencia, descripción, lote, caducidad).</p>
+    }
+  </header>
+
+  <!-- Botones de lectura hasta arriba (solo en Maleta DB cuando hay lectores o grupos) -->
+  @if (!isDbPage && (readers.length > 0 || readerGroups.length > 0)) {
+    <div class="card reading-controls-top">
+      <div class="reading-controls-row">
+        <div class="reading-controls-primary">
+          <button
+            type="button"
+            class="btn btn-success btn-large"
+            (click)="startReading(true)"
+            [disabled]="!hasReaderOrGroupSelected || isReading"
+            title="Borrar lo leído y empezar de cero"
+          >
+            <span class="material-icons">play_arrow</span>
+            Iniciar lectura
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary btn-large"
+            (click)="continueReading()"
+            [disabled]="!hasReaderOrGroupSelected || isReading"
+            title="Seguir sumando a los RFID ya leídos"
+          >
+            <span class="material-icons">add_circle</span>
+            Continuar lectura
+          </button>
+          <button
+            type="button"
+            class="btn btn-warn btn-large"
+            (click)="stopReading()"
+            [disabled]="!hasReaderOrGroupSelected || !isReading"
+          >
+            <span class="material-icons">stop</span>
+            Detener lectura
+          </button>
+        </div>
+        <div class="reading-controls-meta">
+          <span class="reading-using-label">Usando: {{ selectedReaderOrGroupLabel }}</span>
+          @if (readerStatus || readerGroupStatus) {
+            <span class="badge" [class.badge-ok]="(selectionMode === 'reader' ? readerStatus?.connected : true)">
+              <span class="badge-dot"></span>
+              {{ selectionMode === 'reader' && readerStatus ? (readerStatus.connected ? 'Conectado' : 'Desconectado') : 'Grupo' }}
+            </span>
+            <span class="badge" [class.badge-ok]="isReading">
+              <span class="badge-dot"></span>
+              {{ isReading ? 'Leyendo' : 'Detenido' }}
+            </span>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Maletas y semáforos -->
+  @if (!isDbPage && maletas.length > 0) {
+    <div class="card maletas-card maletas-card-top">
+      <h2 class="card-title">Maletas</h2>
+      <details class="maletas-dropdown-card">
+        <summary class="maletas-dropdown-summary">
+          <span class="material-icons">checklist</span>
+          Maletas a leer
+          <span class="maletas-dropdown-count">{{ selectedMaletaIdsForReading.size }}/{{ maletas.length }} seleccionadas</span>
+        </summary>
+        <div class="maletas-dropdown-body">
+          <div class="maletas-dropdown-search">
+            <span class="material-icons">search</span>
+            <input
+              type="text"
+              placeholder="Buscar por nombre o RFID..."
+              [(ngModel)]="maletasDropdownSearch"
+              class="maletas-search-input"
+            />
+          </div>
+          <div class="maletas-dropdown-actions">
+            <button type="button" class="btn btn-secondary btn-sm" (click)="selectAllMaletasForReading()">Seleccionar todas</button>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="clearMaletasForReading()">Ninguna</button>
+          </div>
+          <ul class="maletas-checklist">
+            @for (m of maletasFilteredForChecklist; track m.id) {
+              <li class="maletas-checklist-item">
+                <label class="maletas-checklist-label">
+                  <input type="checkbox" [checked]="isMaletaSelectedForReading(m.id)" (change)="toggleMaletaForReading(m.id)" />
+                  <span class="maleta-nombre-inline">{{ m.nombre || 'Sin nombre' }}</span>
+                  <span class="maleta-master-inline">{{ m.masterRfid }}</span>
+                  <span class="maleta-count-inline">({{ m.productRfids.length }} producto(s))</span>
+                </label>
+              </li>
+            }
+          </ul>
+          @if (maletasFilteredForChecklist.length === 0) {
+            <p class="maletas-checklist-empty">{{ maletasDropdownSearch.trim() ? 'Ninguna maleta coincide con la búsqueda.' : 'No hay maletas.' }}</p>
+          }
+        </div>
+      </details>
+      @if (maletasParaLeer.length === 0) {
+        <p class="maletas-list-hint">Selecciona maletas en el desplegable de arriba para ver sus semáforos.</p>
+      }
+      <div class="maletas-list">
+        @for (m of maletasParaLeer; track m.id) {
+          <details class="maleta-item" [class.semaphore-blue]="getMaletaStatus(m) === 'blue'" [class.semaphore-yellow]="getMaletaStatus(m) === 'yellow'" [class.semaphore-green]="getMaletaStatus(m) === 'green'" [class.semaphore-red]="getMaletaStatus(m) === 'red'" (toggle)="onMaletaToggle(m, $event)">
+            <summary>
+              <span class="semaphore maleta-semaphore" [attr.data-status]="getMaletaStatus(m)" [title]="semaphoreTitle(getMaletaStatus(m))"></span>
+              <span class="material-icons">work</span>
+              @if (m.nombre) {
+                <span class="maleta-nombre">{{ m.nombre }}</span>
+              }
+              <span class="maleta-master">{{ m.masterRfid }}</span>
+              <span class="maleta-count">{{ m.productRfids.length }} producto(s)</span>
+              <span class="maleta-read-summary">
+                <span class="summary-item" [class.leido]="getMaletaReadSummary(m).masterRead" [class.no-leido]="!getMaletaReadSummary(m).masterRead" title="Etiqueta de la maleta">
+                  <span class="material-icons">{{ getMaletaReadSummary(m).masterRead ? 'check_circle' : 'cancel' }}</span>
+                  Etiqueta maleta: {{ getMaletaReadSummary(m).masterRead ? 'Leída' : 'No leída' }}
+                </span>
+                <span class="summary-item products-count" title="Productos de esta maleta leídos">
+                  <span class="material-icons">inventory_2</span>
+                  Productos: {{ getMaletaReadSummary(m).productsRead }}/{{ getMaletaReadSummary(m).productsTotal }} leídos
+                </span>
+                <span class="progress-bar"><span class="progress-fill" [style.width.%]="getMaletaProgress(m).total ? (100 * getMaletaProgress(m).read / getMaletaProgress(m).total) : 0"></span></span>
+              </span>
+              <span class="maleta-status-legend">{{ semaphoreLegend(getMaletaStatus(m)) }}</span>
+            </summary>
+            <ul class="maleta-products maleta-expected-list">
+              <li class="expected-item" [class.read]="isTagRead(m.masterRfid)">
+                <span class="tag-id"><span class="expected-label">Maestro:</span> {{ m.masterRfid }}</span>
+                <span class="read-badge" [class.leido]="isTagRead(m.masterRfid)" [class.no-leido]="!isTagRead(m.masterRfid)">
+                  <span class="material-icons">{{ isTagRead(m.masterRfid) ? 'check_circle' : 'cancel' }}</span>
+                  {{ isTagRead(m.masterRfid) ? 'Leído' : 'No leído' }}
+                </span>
+              </li>
+              @for (rfid of m.productRfids; track rfid) {
+                <li class="expected-item" [class.read]="isTagRead(rfid)" [class.caducado]="isProductExpired(m, rfid)">
+                  <span class="tag-id">{{ rfid }}</span>
+                  @if (getProductoInfo(m, rfid); as prod) {
+                    <span class="producto-meta">Ref: {{ prod.referencia || '–' }} · Lote: {{ prod.lote || '–' }} · Cad: {{ prod.caducidad || '–' }}</span>
+                  }
+                  <span class="read-badge" [class.leido]="isTagRead(rfid)" [class.no-leido]="!isTagRead(rfid)">
+                    <span class="material-icons">{{ isTagRead(rfid) ? 'check_circle' : 'cancel' }}</span>
+                    {{ isTagRead(rfid) ? 'Leído' : 'No leído' }}
+                  </span>
+                  @if (isProductExpired(m, rfid)) {
+                    <span class="caducidad-badge" title="Caducado por fecha del sistema">
+                      <span class="material-icons">event_busy</span>
+                      Caducado
+                    </span>
+                  }
+                </li>
+              }
+            </ul>
+          </details>
+        }
+      </div>
+
+      @if (maletasParaLeer.length > 0) {
+        <div class="maletas-extras-section">
+          <details class="extras-block extras-missing">
+            <summary class="extras-summary">
+              <span class="extras-summary-label">No leídos (faltan por leer)</span>
+              <span class="extras-summary-count">{{ missingTagsInMaletas.length }} / {{ getExpectedTagUnionSize() }}</span>
+            </summary>
+            @if (missingTagsInMaletas.length > 0) {
+              <ul class="extras-tag-list">
+                @for (rfid of missingTagsInMaletas; track rfid) {
+                  <li class="tag-id">{{ rfid }}</li>
+                }
+              </ul>
+            } @else {
+              <p class="extras-empty">Ninguno. Todos los RFIDs de las maletas se han leído.</p>
+            }
+          </details>
+          <details class="extras-block extras-unlisted">
+            <summary class="extras-summary">
+              <span class="extras-summary-label">Productos extras no enlistados</span>
+              <span class="extras-summary-count">{{ extraUnlistedTags.length }}</span>
+            </summary>
+            @if (extraUnlistedTags.length > 0) {
+              <ul class="extras-tag-list">
+                @for (rfid of extraUnlistedTags; track rfid) {
+                  <li class="tag-id">{{ rfid }}</li>
+                }
+              </ul>
+            } @else {
+              <p class="extras-empty">Ninguno.</p>
+            }
+          </details>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- Todos los productos: borrar todos o seleccionados -->
+  <details class="card card-productos-db" [attr.open]="isDbPage ? true : null">
+    <summary class="card-title">
+      <span class="material-icons">inventory</span>
+      Todos los productos
+      <span class="productos-count">{{ allProductos.length }} producto(s)</span>
+      <button type="button" class="btn btn-secondary btn-sm" (click)="loadAllProductos(); $event.stopPropagation(); $event.preventDefault()" title="Recargar lista">
+        <span class="material-icons">refresh</span>
+      </button>
+    </summary>
+    @if (loadingProductos) {
+      <p class="muted">Cargando productos…</p>
+    } @else if (allProductos.length === 0) {
+      <p class="muted">No hay productos en la base de datos. Sube asociaciones con Excel en la sección Maletas.</p>
+    } @else {
+      <div class="productos-toolbar">
+        <label class="checkbox-label">
+          <input type="checkbox" [checked]="allProductosSelected" (change)="allProductosSelected = $any($event.target).checked" />
+          Seleccionar todos
+        </label>
+        <span class="productos-selected">{{ selectedProductosCount }} seleccionado(s)</span>
+        <button type="button" class="btn btn-warn btn-sm" (click)="deleteSelectedProductos()" [disabled]="selectedProductosCount === 0" title="Eliminar seleccionados">
+          <span class="material-icons">delete_sweep</span>
+          Borrar seleccionados
+        </button>
+        <button type="button" class="btn btn-warn btn-sm" (click)="deleteAllProductos()" title="Eliminar todos los productos">
+          <span class="material-icons">delete_forever</span>
+          Borrar todos
+        </button>
+      </div>
+      <div class="table-wrap">
+        <table class="productos-db-table">
+          <thead>
+            <tr>
+              <th class="col-check"><input type="checkbox" [checked]="allProductosSelected" (change)="allProductosSelected = $any($event.target).checked" title="Seleccionar todos" /></th>
+              <th>RFID</th>
+              <th>Referencia</th>
+              <th>Descripción</th>
+              <th>Lote</th>
+              <th>Caducidad</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (p of allProductos; track p.id) {
+              <tr>
+                <td class="col-check">
+                  <input type="checkbox" [checked]="selectedProductIds.has(p.id)" (change)="toggleProductoSelection(p.id)" />
+                </td>
+                <td class="tag-id">{{ p.rfid }}</td>
+                <td>{{ p.referencia || '–' }}</td>
+                <td>{{ p.descripcion || '–' }}</td>
+                <td>{{ p.lote || '–' }}</td>
+                <td>{{ p.caducidad || '–' }}</td>
+                <td class="acciones-cell">
+                  <button type="button" class="btn btn-secondary btn-sm" (click)="openEditProducto(p)" title="Editar RFID, referencia, lote, caducidad">
+                    <span class="material-icons">edit</span>
+                    Editar
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </details>
+
+  @if (showEditProducto) {
+    <div class="modal-overlay" (click)="closeEditProducto()">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <h3 class="modal-title">Editar producto</h3>
+        <div class="form-row">
+          <label>RFID</label>
+          <input type="text" [(ngModel)]="editProductoRfid" placeholder="RFID" />
+        </div>
+        <div class="form-row">
+          <label>Referencia</label>
+          <input type="text" [(ngModel)]="editProductoReferencia" placeholder="Referencia" />
+        </div>
+        <div class="form-row">
+          <label>Descripción</label>
+          <input type="text" [(ngModel)]="editProductoDescripcion" placeholder="Descripción" />
+        </div>
+        <div class="form-row">
+          <label>Lote</label>
+          <input type="text" [(ngModel)]="editProductoLote" placeholder="Lote" />
+        </div>
+        <div class="form-row">
+          <label>Caducidad</label>
+          <input type="text" [(ngModel)]="editProductoCaducidad" placeholder="Ej. 2025-12-31" />
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-primary" (click)="saveEditProducto()">
+            <span class="material-icons">save</span>
+            Guardar
+          </button>
+          <button type="button" class="btn btn-secondary" (click)="closeEditProducto()">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (!isDbPage) {
+  <!-- Timer de reintento y forzar recarga (cuando no hay lectores) -->
+  @if (needsRetry) {
+    <div class="card retry-card">
+      <div class="retry-row">
+        <span class="retry-label">
+          <span class="material-icons">schedule</span>
+          Reintento en <strong class="retry-count">{{ retryCountdown }}</strong> s
+        </span>
+        <button type="button" class="btn btn-primary" (click)="forceReload()">
+          <span class="material-icons">refresh</span>
+          Forzar recarga
+        </button>
+      </div>
+    </div>
+  }
+  }
+
+  <!-- Maletas: listado y subir asociaciones con Excel -->
+  <div class="card maletas-card">
+    <div class="maletas-header">
+      <h2 class="card-title">{{ isDbPage ? 'Maletas – Sube asociaciones con Excel' : 'Maletas' }}</h2>
+      <!-- En DB: subir maletas con Excel o .txt. En Maleta DB solo se muestra el dropdown y la lista. -->
+      @if (isDbPage) {
+      <div class="maletas-actions">
+        <button type="button" class="btn btn-secondary btn-sm" (click)="exportMaletasToTxt()" title="Guardar lista en .txt">
+          <span class="material-icons">download</span>
+          Exportar .txt
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" (click)="fileInput.click()" title="Cargar maletas desde .txt">
+          <span class="material-icons">upload_file</span>
+          Cargar .txt
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" (click)="exportToExcel()" [disabled]="excelLoading" title="Descargar maletas y relaciones (Excel)">
+          <span class="material-icons">{{ excelLoading ? 'hourglass_empty' : 'table_chart' }}</span>
+          Descargar Excel
+        </button>
+        <button type="button" class="btn btn-primary btn-sm" (click)="excelFileInput.click()" [disabled]="excelLoading" title="Carga masiva desde Excel">
+          <span class="material-icons">upload_file</span>
+          Cargar Excel
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" (click)="downloadExcelTemplate()" title="Descargar plantilla con instrucciones">
+          <span class="material-icons">description</span>
+          Descargar plantilla
+        </button>
+        <!-- Input oculto: subir maletas desde .txt (formato MAESTRO rfid + líneas de RFIDs) -->
+        <input
+          #fileInput
+          type="file"
+          accept=".txt,text/plain"
+          (change)="onMaletasFileSelected($event)"
+          style="display: none"
+        />
+        <!-- Input oculto: subir maletas y asociaciones desde Excel (columnas Nombre, RFID Maestro, RFID Producto, etc.) -->
+        <input
+          #excelFileInput
+          type="file"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+          (change)="onExcelFileSelected($event)"
+          style="display: none"
+        />
+        <button type="button" class="btn btn-primary" (click)="openCreateMaleta()">
+          <span class="material-icons">add_box</span>
+          Crear maleta
+        </button>
+      </div>
+      }
+      @if (excelError) {
+        <div class="error-msg">{{ excelError }}</div>
+      }
+      @if (excelLoading) {
+        <p class="muted">Exportando / importando Excel…</p>
+      }
+      @if (isDbPage) {
+        <p class="maletas-excel-hint">Descarga la plantilla, rellena maletas y productos (asociaciones), y sube el Excel para crear maletas y asociar productos.</p>
+      }
+      @if (isDbPage) {
+      <details class="excel-format-hint">
+        <summary>Formato Excel (columnas)</summary>
+        <p>Use <strong>Descargar plantilla</strong> para obtener un archivo con las columnas y una hoja de <strong>Instrucciones</strong> para la carga masiva. Columnas: Nombre Maleta, RFID Maestro, RFID Producto, Referencia, Descripción, Lote, Caducidad. Una fila por producto; al cargar se agrupa por Nombre + RFID Maestro.</p>
+      </details>
+      }
+    </div>
+
+    @if (!isDbPage && showCreateMaleta) {
+      <div class="create-maleta-form">
+        <div class="form-row">
+          <label>Nombre de la maleta</label>
+          <input
+            type="text"
+            placeholder="Ej. Maleta quirúrgica 1"
+            [(ngModel)]="newMaletaNombre"
+            class="nombre-input"
+          />
+        </div>
+        <div class="form-row">
+          <label>RFID maestro (la maleta)</label>
+          <div class="input-group">
+            <input
+              type="text"
+              placeholder="Ej. E2801160..."
+              [(ngModel)]="newMaletaMasterRfid"
+              class="master-input"
+            />
+            @if (tagList.length > 0) {
+              <span class="input-hint">De lectura:</span>
+              @for (t of tagList; track t.id) {
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm tag-pill"
+                  (click)="setMasterFromTag(t.id)"
+                  [class.selected]="newMaletaMasterRfid === t.id"
+                >
+                  {{ t.id.length > 16 ? t.id.slice(0, 12) + '…' : t.id }}
+                </button>
+              }
+            }
+          </div>
+        </div>
+
+        <div class="form-row">
+          <label>Productos (RFID + referencia, descripción, lote, caducidad)</label>
+          <div class="products-add">
+            <input
+              type="text"
+              placeholder="RFID del producto"
+              [(ngModel)]="newProductRfidInput"
+              (keyup.enter)="addProductManual()"
+            />
+            <input type="text" placeholder="Referencia" [(ngModel)]="newProductReferencia" class="product-ref" />
+            <input type="text" placeholder="Descripción" [(ngModel)]="newProductDescripcion" class="product-desc" />
+            <input type="text" placeholder="Lote" [(ngModel)]="newProductLote" class="product-lote" />
+            <input type="text" placeholder="Caducidad (fecha)" [(ngModel)]="newProductCaducidad" class="product-caducidad" />
+            <button type="button" class="btn btn-secondary btn-sm" (click)="addProductManual()">Añadir</button>
+            @if (tagList.length > 0) {
+              <span class="input-hint">De lectura:</span>
+              @for (t of tagList; track t.id) {
+                @if (t.id !== newMaletaMasterRfid) {
+                  <button
+                    type="button"
+                    class="btn btn-secondary btn-sm tag-pill"
+                    (click)="addProductFromTag(t.id)"
+                    [disabled]="isProductInNewMaleta(t.id)"
+                  >
+                    {{ t.id.length > 16 ? t.id.slice(0, 12) + '…' : t.id }}
+                  </button>
+                }
+              }
+            }
+          </div>
+          @if (newMaletaProductos.length > 0) {
+            <ul class="product-list product-list-detailed">
+              @for (p of newMaletaProductos; track p.rfid) {
+                <li class="product-list-item">
+                  <span class="tag-id">{{ p.rfid }}</span>
+                  @if (useBackend) {
+                    <span class="product-meta">Ref: {{ p.referencia || '–' }}</span>
+                    <span class="product-meta">Lote: {{ p.lote || '–' }}</span>
+                    <span class="product-meta">Cad: {{ p.caducidad || '–' }}</span>
+                  }
+                  <button type="button" class="btn-icon" (click)="removeProduct(p.rfid)" title="Quitar">×</button>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" (click)="saveMaleta()" [disabled]="!newMaletaMasterRfid.trim()">
+            <span class="material-icons">save</span>
+            Guardar maleta
+          </button>
+          <button type="button" class="btn btn-secondary" (click)="closeCreateMaleta()">Cancelar</button>
+        </div>
+      </div>
+    }
+
+    <!-- DB: maletas con productos; editar relación (añadir/quitar producto, editar datos). -->
+    @if (isDbPage && maletas.length > 0) {
+      <div class="maletas-db-edit">
+        @for (m of maletas; track m.id) {
+          <details class="card maleta-db-card">
+            <summary class="maleta-db-summary">
+              <span class="material-icons">work</span>
+              <span class="maleta-nombre-inline">{{ m.nombre || 'Sin nombre' }}</span>
+              <span class="maleta-master-inline">{{ m.masterRfid }}</span>
+              <span class="maleta-count-inline">{{ m.productRfids.length }} producto(s)</span>
+              <button type="button" class="btn btn-secondary btn-sm" (click)="openEditMaleta(m); $event.stopPropagation()" title="Editar nombre y RFID">
+                <span class="material-icons">edit</span>
+              </button>
+              <button type="button" class="btn-icon btn-delete" (click)="deleteMaleta(m, $event); $event.stopPropagation()" title="Eliminar maleta">
+                <span class="material-icons">delete</span>
+              </button>
+            </summary>
+            <div class="maleta-db-productos">
+              @if (editingMaletaId === m.id) {
+                <div class="edit-maleta-form">
+                  <label>Nombre</label>
+                  <input type="text" [(ngModel)]="editMaletaNombre" placeholder="Nombre de la maleta" />
+                  <label>RFID maestro (etiqueta de la maleta)</label>
+                  <input type="text" [(ngModel)]="editMaletaMasterRfid" placeholder="E2801160..." />
+                  <div class="edit-maleta-actions">
+                    <button type="button" class="btn btn-primary btn-sm" (click)="saveEditMaleta()" [disabled]="!editMaletaMasterRfid.trim()">Guardar</button>
+                    <button type="button" class="btn btn-secondary btn-sm" (click)="closeEditMaleta()">Cancelar</button>
+                  </div>
+                </div>
+              }
+              @if (m.productos && m.productos.length > 0) {
+                <ul class="maleta-db-productos-list">
+                  @for (p of m.productos; track p.id) {
+                    <li class="maleta-db-producto-item">
+                      <span class="tag-id">{{ p.rfid }}</span>
+                      <span>{{ p.referencia || '–' }}</span>
+                      <span>{{ p.lote || '–' }}</span>
+                      <span>{{ p.caducidad || '–' }}</span>
+                      <button type="button" class="btn btn-secondary btn-sm" (click)="openEditProducto(p)" title="Editar">
+                        <span class="material-icons">edit</span>
+                      </button>
+                      <button type="button" class="btn btn-warn btn-sm" (click)="quitarProductoDeMaletaConfirm(m.id, p)" title="Quitar de esta maleta">
+                        <span class="material-icons">link_off</span>
+                        Quitar
+                      </button>
+                    </li>
+                  }
+                </ul>
+              } @else {
+                <p class="muted">Sin productos. Añade uno debajo.</p>
+              }
+              @if (maletaIdForAddProduct === m.id) {
+                <div class="add-producto-form">
+                  <input type="text" [(ngModel)]="addProductoRfid" placeholder="RFID" />
+                  <input type="text" [(ngModel)]="addProductoReferencia" placeholder="Referencia" />
+                  <input type="text" [(ngModel)]="addProductoDescripcion" placeholder="Descripción" />
+                  <input type="text" [(ngModel)]="addProductoLote" placeholder="Lote" />
+                  <input type="text" [(ngModel)]="addProductoCaducidad" placeholder="Caducidad" />
+                  <button type="button" class="btn btn-primary btn-sm" (click)="saveAddProductoToMaleta()" [disabled]="!addProductoRfid.trim()">Guardar</button>
+                  <button type="button" class="btn btn-secondary btn-sm" (click)="closeAddProductoToMaleta()">Cancelar</button>
+                </div>
+              } @else {
+                <button type="button" class="btn btn-primary btn-sm" (click)="openAddProductoToMaleta(m.id)">
+                  <span class="material-icons">add</span>
+                  Añadir producto a esta maleta
+                </button>
+              }
+            </div>
+          </details>
+        }
+      </div>
+    }
+
+      @if (maletas.length > 0 && !isDbPage) {
+      <!-- Simulación y lectura del túnel (solo en Maleta DB) -->
+      @if (showSimulatedRead) {
+        <div class="simulated-read-card">
+          <div class="simulated-read-header">
+            <h3 class="card-title">Simular lectura del túnel</h3>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="toggleShowSimulatedRead()" title="Ocultar y usar la lectura real del túnel">
+              <span class="material-icons">visibility_off</span>
+              Ocultar (usar lectura del túnel)
+            </button>
+          </div>
+          <p class="simulated-read-hint">Ingresa a mano las etiquetas leídas (una por línea o separadas por coma).</p>
+          <textarea
+            class="simulated-read-input"
+            placeholder="E2801160...&#10;E2801161...&#10;E2801162..."
+            [(ngModel)]="simulatedReadInput"
+            rows="4"
+          ></textarea>
+          <div class="semaphore-row general-semaphore">
+            <span class="semaphore-label">Semáforo general</span>
+            <span class="semaphore" [attr.data-status]="generalSemaphoreStatus" [title]="semaphoreTitle(generalSemaphoreStatus)"></span>
+            <span class="semaphore-legend">{{ semaphoreLegend(generalSemaphoreStatus) }}</span>
+            <span class="maletas-completed-count">{{ completedMaletasCount }}/{{ maletasParaLeer.length }} maletas completadas</span>
+          </div>
+        </div>
+      } @else {
+        <div class="tunnel-source-bar">
+          <span class="tunnel-source-label">
+            <span class="material-icons">nfc</span>
+            Usando lectura del túnel
+          </span>
+          <button type="button" class="btn btn-secondary btn-sm" (click)="toggleShowSimulatedRead()">
+            <span class="material-icons">visibility</span>
+            Mostrar simulación
+          </button>
+        </div>
+        <div class="semaphore-row general-semaphore general-semaphore-inline">
+          <span class="semaphore-label">Semáforo general</span>
+          <span class="semaphore" [attr.data-status]="generalSemaphoreStatus" [title]="semaphoreTitle(generalSemaphoreStatus)"></span>
+          <span class="semaphore-legend">{{ semaphoreLegend(generalSemaphoreStatus) }}</span>
+          <span class="maletas-completed-count">{{ completedMaletasCount }}/{{ maletasParaLeer.length }} maletas completadas</span>
+        </div>
+      }
+
+      @if (extraUnlistedTags.length > 0) {
+        <div class="card extra-unlisted-card">
+          <h3 class="card-title">
+            <span class="material-icons">warning</span>
+            Productos extras no enlistados
+            <span class="extra-unlisted-count">{{ extraUnlistedTags.length }}</span>
+          </h3>
+          <p class="extra-unlisted-hint">Etiquetas leídas que no están en ninguna maleta.</p>
+          <ul class="extra-unlisted-list">
+            @for (rfid of extraUnlistedTags; track rfid) {
+              <li class="tag-id">{{ rfid }}</li>
+            }
+          </ul>
+        </div>
+      }
+    }
+  </div>
+
+  @if (!isDbPage && hasReaderOrGroupSelected) {
+    <div class="main-section">
+      @if (selectionMode === 'reader') {
+        <div class="card reader-maintenance">
+          <div class="reader-maintenance-row">
+            <button type="button" class="btn btn-secondary btn-sm" (click)="forceReload()" title="Recargar API y lectores">
+              <span class="material-icons">refresh</span>
+              Forzar recarga
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="resetReader()" [disabled]="isReading" title="Reset conexión">Reset</button>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="rebootReader()" [disabled]="isReading" title="Reboot completo">Reboot</button>
+            <button type="button" class="btn btn-secondary btn-sm" (click)="resetAntennas()" [disabled]="isReading" title="Reset antenas">Reset antenas</button>
+          </div>
+        </div>
+      }
+
+      @if (isReading || tagList.length > 0) {
+        <div class="card tags-card">
+          <div class="tags-header">
+            <h2 class="card-title">Tags RFID detectados (Maleta)</h2>
+            <div class="stats-row">
+              <div class="stat">
+                <span class="stat-value">{{ uniqueCount }}</span>
+                <span class="stat-label">Únicos</span>
+              </div>
+              @if (maletasParaLeer.length > 0) {
+                <div class="stat">
+                  <span class="stat-value">{{ uniqueCountForMaletas }}</span>
+                  <span class="stat-label">En maletas a leer</span>
+                </div>
+                <div class="stat">
+                  <span class="stat-value">{{ tagList.length - uniqueCountForMaletas }}</span>
+                  <span class="stat-label">No en maletas</span>
+                </div>
+              }
+              <div class="stat">
+                <span class="stat-value">{{ totalReads }}</span>
+                <span class="stat-label">Total lecturas</span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                (click)="clearTags()"
+                [disabled]="isReading"
+              >
+                Limpiar contadores
+              </button>
+            </div>
+          </div>
+          @if (tagList.length === 0 && isReading) {
+            <p class="muted waiting-msg">
+              <span class="material-icons spin">sync</span>
+              Esperando tags...
+            </p>
+          } @else if (tagList.length > 0) {
+            <div class="tags-table-wrap">
+              <table class="tags-table">
+                <thead>
+                  <tr>
+                    <th>Tag RFID</th>
+                    <th>Lecturas</th>
+                    <th>Última vez</th>
+                    @if (maletasParaLeer.length > 0) {
+                      <th>Pertenece a maleta</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (t of tagList; track t.id) {
+                    <tr [class.tag-not-in-maletas]="maletasParaLeer.length > 0 && !isTagInMaletas(t.id)">
+                      <td class="tag-id">{{ t.id }}</td>
+                      <td>{{ t.count }}</td>
+                      <td class="tag-time">{{ t.lastSeen }}</td>
+                      @if (maletasParaLeer.length > 0) {
+                        <td>
+                          @if (isTagInMaletas(t.id)) {
+                            <span class="tag-badge tag-in-maleta">En maleta</span>
+                          } @else {
+                            <span class="tag-badge tag-not-in-maleta">No está en maletas</span>
+                          }
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      }
+
+      <details class="card">
+        <summary class="card-title">Antenas</summary>
+        @if (filteredAntennas().length === 0) {
+          <p class="muted">Sin antenas o no cargadas.</p>
+        } @else {
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Nombre</th>
+                  <th>Activa</th>
+                  <th>Tx (dBm)</th>
+                  <th>Rx (dBm)</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (a of filteredAntennas(); track a.id) {
+                  <tr>
+                    <td>{{ a.id }}</td>
+                    <td>{{ a.name || '-' }}</td>
+                    <td>{{ a.enabled ? 'Sí' : 'No' }}</td>
+                    <td>{{ a.txPowerDbm ?? '-' }}</td>
+                    <td>{{ a.rxSensitivityDbm ?? '-' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      </details>
+
+      <details class="card events-card">
+        <summary class="card-title">
+          Eventos en tiempo real (SSE / WebSocket)
+          @if (sseConnected) {
+            <span class="status-dot connected"></span>
+            <span class="sse-status">Conectado</span>
+          }
+          <span class="events-count">{{ eventsReceived }} eventos recibidos</span>
+        </summary>
+        <div class="sse-controls">
+          @if (!isReading) {
+            @if (!sseConnected) {
+              <button type="button" class="btn btn-primary" (click)="connectRealtime()">Conectar stream manual</button>
+            } @else {
+              <button type="button" class="btn btn-warn" (click)="disconnectRealtime()">Desconectar</button>
+            }
+          }
+          <button type="button" class="btn btn-secondary" (click)="clearEvents()">Limpiar eventos</button>
+        </div>
+        <div class="events-log">
+          @if (events.length === 0) {
+            <p class="muted">Sin eventos. Los eventos se muestran al iniciar la lectura.</p>
+          } @else {
+            @for (ev of events; track ev.time + $index) {
+              <div class="event-line">
+                <span class="event-time">{{ ev.time }}</span>
+                <pre class="event-data">{{ ev.data | json }}</pre>
+              </div>
+            }
+          }
+        </div>
+      </details>
+    </div>
+  } @else if (!isDbPage) {
+    <div class="card">
+      @if (loading) {
+        <p class="muted">Cargando lectores y grupos...</p>
+      } @else {
+        <p class="muted">Configura la URL del API abajo y selecciona un lector o un grupo de lectores para iniciar la lectura.</p>
+      }
+    </div>
+  }
+
+  <!-- Configuración API y selector de lector/grupo (abajo) -->
+  @if (!isDbPage) {
+    <details class="card config-card config-card-bottom">
+      <summary class="config-summary">Configuración API y selección de lector o grupo</summary>
+      <div class="config-body">
+        <div class="config-row">
+          <label for="apiBase">URL túnel RFID (lectores y grupos)</label>
+          <div class="input-group">
+            <input
+              id="apiBase"
+              type="text"
+              placeholder="http://rfid.leyluz.com"
+              [(ngModel)]="apiBaseUrl"
+              (keyup.enter)="saveBaseUrl()"
+            />
+            <button type="button" class="btn btn-primary" (click)="saveBaseUrl()">Guardar y cargar</button>
+          </div>
+        </div>
+        @if (error) {
+          <div class="error-msg">{{ error }}</div>
+        }
+        <div class="config-row selector-row">
+          <label>Lector o grupo de lectores</label>
+          <div class="reader-group-selectors">
+            <div class="field">
+              <select [(ngModel)]="selectionMode" (ngModelChange)="onSelectionModeChange($event)">
+                <option value="reader">Lector</option>
+                <option value="group">Grupo de lectores</option>
+              </select>
+            </div>
+            @if (selectionMode === 'reader') {
+              <div class="field">
+                <select id="reader" [(ngModel)]="selectedReaderId" (ngModelChange)="onReaderChange()" [disabled]="isReading">
+                  @for (r of readers; track r.id) {
+                    <option [value]="r.id">{{ r.name || r.id }}</option>
+                  }
+                </select>
+              </div>
+            } @else {
+              <div class="field">
+                <select id="readerGroup" [(ngModel)]="selectedGroupId" (ngModelChange)="onGroupChange()" [disabled]="isReading">
+                  @for (g of readerGroups; track g.id) {
+                    <option [value]="g.id">{{ g.name || g.id }}</option>
+                  }
+                </select>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </details>
+  }
+</div>

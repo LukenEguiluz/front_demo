@@ -1,11 +1,13 @@
 import { ChangeDetectorRef, Component, NgZone, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule, JsonPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RfidApi, Reader, Antenna, ReaderStatus } from '../../../services/rfid-api';
+import { Router } from '@angular/router';
+import { RfidApi, Reader, ReaderGroup, Antenna, ReaderStatus, ReaderGroupStatus } from '../../../services/rfid-api';
 import { MaletasApi, MaletaBackend, ProductoBackend } from '../../../services/maletas-api';
 import { ExcelMaletasService, ExcelMaletaRow } from '../../../services/excel-maletas';
-import { forkJoin, from, of } from 'rxjs';
-import { concatMap, switchMap, tap, toArray } from 'rxjs/operators';
+import { environment } from '../../../../environments/environment';
+import { forkJoin, from, of, throwError } from 'rxjs';
+import { catchError, concatMap, switchMap, tap, toArray } from 'rxjs/operators';
 
 interface TagCount {
   id: string;
@@ -38,23 +40,34 @@ export interface MaletaItem {
 export type SemaphoreStatus = 'red' | 'blue' | 'yellow' | 'green';
 
 @Component({
-  selector: 'app-maleta',
+  selector: 'app-maletadb',
   imports: [CommonModule, FormsModule, JsonPipe],
-  templateUrl: './maleta.html',
-  styleUrl: './maleta.css',
+  templateUrl: './maletadb.html',
+  styleUrl: './maletadb.css',
 })
-export class Maleta implements OnInit, OnDestroy {
+export class MaletaDb implements OnInit, OnDestroy {
   apiBaseUrl = '';
   readers: Reader[] = [];
+  readerGroups: ReaderGroup[] = [];
   antennas: Antenna[] = [];
+  /** 'reader' = un lector; 'group' = un grupo de lectores */
+  selectionMode: 'reader' | 'group' = 'reader';
   selectedReaderId = '';
+  selectedGroupId = '';
   readerStatus: ReaderStatus | null = null;
+  readerGroupStatus: ReaderGroupStatus | null = null;
+  /** Sesión activa (lector o grupo). POST /api/sessions/start devuelve sessionId (grp-<uuid> para grupos). */
+  currentSessionId: string | null = null;
   loading = false;
   error = '';
   statusPolling: ReturnType<typeof setInterval> | null = null;
   uiRefreshInterval: ReturnType<typeof setInterval> | null = null;
-  /** Polling de GET /api/readers/:id/tags para actualizar tagCounts si el gateway no usa SSE/WS. */
   tagsPollingInterval: ReturnType<typeof setInterval> | null = null;
+  sessionPollingInterval: ReturnType<typeof setInterval> | null = null;
+
+  /** Timer para detener la lectura automáticamente a los 2 minutos. */
+  private autoStopTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly autoStopReadingMs = 2 * 60 * 1000;
 
   events: Array<{ time: string; data: unknown }> = [];
   maxEvents = 200;
@@ -73,7 +86,38 @@ export class Maleta implements OnInit, OnDestroy {
 
   /** Lista de maletas guardadas (RFID maestro + productos). */
   maletas: MaletaItem[] = [];
-  private static readonly MALETAS_STORAGE_KEY = 'maleta_list';
+  /** IDs de maletas seleccionadas para lectura (semáforo y lista). Si está vacío se consideran todas. */
+  selectedMaletaIdsForReading = new Set<string>();
+
+  /** Todos los productos de la base de datos (borrar todos o seleccionados). */
+  allProductos: ProductoBackend[] = [];
+  loadingProductos = false;
+  /** IDs de productos seleccionados para borrado masivo. */
+  selectedProductIds = new Set<string>();
+  /** True cuando la ruta es /db (vista solo DB: productos + maletas con Excel). */
+  get isDbPage(): boolean {
+    return this.router.url.includes('/db');
+  }
+  /** Producto en edición (modal). */
+  showEditProducto: ProductoBackend | null = null;
+  editProductoRfid = '';
+  editProductoReferencia = '';
+  editProductoDescripcion = '';
+  editProductoLote = '';
+  editProductoCaducidad = '';
+
+  /** Editar maleta (DB): nombre y RFID maestro. */
+  editingMaletaId: string | null = null;
+  editMaletaNombre = '';
+  editMaletaMasterRfid = '';
+
+  /** Añadir producto a una maleta (DB): maleta id y campos del nuevo producto. */
+  maletaIdForAddProduct: string | null = null;
+  addProductoRfid = '';
+  addProductoReferencia = '';
+  addProductoDescripcion = '';
+  addProductoLote = '';
+  addProductoCaducidad = '';
 
   /** Formulario nueva maleta */
   showCreateMaleta = false;
@@ -87,9 +131,8 @@ export class Maleta implements OnInit, OnDestroy {
   newProductLote = '';
   newProductCaducidad = '';
 
-  /** URL del API de maletas (backend). Si está definida, se usa el backend. */
-  maletasApiUrl = '';
-  useBackend = false;
+  /** Siempre true en MaletaDb: siempre usa el backend. */
+  readonly useBackend = true;
 
   excelLoading = false;
   excelError = '';
@@ -99,26 +142,71 @@ export class Maleta implements OnInit, OnDestroy {
 
   /** Si false, se usa la lectura real del túnel (tagCounts) en lugar del texto simulado. */
   showSimulatedRead = true;
-  private static readonly SHOW_SIMULATED_KEY = 'maleta_show_simulated';
+  private static readonly SHOW_SIMULATED_KEY = 'maletadb_show_simulated';
 
   constructor(
     public api: RfidApi,
     public maletasApi: MaletasApi,
     private excelMaletas: ExcelMaletasService,
     private ngZone: NgZone,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private router: Router
   ) {}
 
+  /** Leyendo = hay una sesión activa (iniciada con POST /api/sessions/start). */
   get isReading(): boolean {
-    return !!this.readerStatus?.reading;
+    return !!this.currentSessionId;
   }
 
+  /** Hay un lector o un grupo seleccionado para poder iniciar lectura. */
+  get hasReaderOrGroupSelected(): boolean {
+    if (this.selectionMode === 'reader') return !!this.selectedReaderId;
+    return !!this.selectedGroupId;
+  }
+
+  /** Etiqueta del lector o grupo seleccionado (para mostrar "Usando: ..."). */
+  get selectedReaderOrGroupLabel(): string {
+    if (this.selectionMode === 'reader') {
+      const r = this.readers.find((x) => x.id === this.selectedReaderId);
+      return r ? (r.name || r.id) : this.selectedReaderId || '—';
+    }
+    const g = this.readerGroups.find((x) => x.id === this.selectedGroupId);
+    return g ? (g.name || g.id) : this.selectedGroupId || '—';
+  }
+
+  /** Cantidad de tags únicos de la fuente activa; tras detener lectura se mantiene lo guardado en memoria. */
   get uniqueCount(): number {
+    if (this.currentSessionId || this.tagCounts.size > 0) return this.tagCounts.size;
+    if (this.showSimulatedRead) return this.simulatedReadTags.length;
     return this.tagCounts.size;
   }
 
+  /**
+   * Lista de tags: sesión activa o guardados en memoria (tras detener) → tagCounts; si no, simulación.
+   * Así no se pierde lo ya leído para las maletas al detener.
+   */
   get tagList(): TagCount[] {
-    return Array.from(this.tagCounts.values()).sort((a, b) => b.count - a.count);
+    if (this.currentSessionId || this.tagCounts.size > 0) {
+      return Array.from(this.tagCounts.values()).sort((a, b) => b.count - a.count);
+    }
+    const now = new Date().toLocaleTimeString('es-MX');
+    return this.simulatedReadTags.map((id) => ({ id, count: 1, lastSeen: now })).sort((a, b) => a.id.localeCompare(b.id));
+  }
+
+  /**
+   * Tags para la card "Tags RFID detectados (Maleta)": cuando hay maletas a leer,
+   * solo los únicos que pertenecen a esas maletas (master + productos). Si no hay maletas seleccionadas, todos.
+   */
+  get tagListForMaletas(): TagCount[] {
+    const list = this.tagList;
+    if (this.maletasParaLeer.length === 0) return list;
+    const expected = this.getExpectedTagUnion();
+    return list.filter((t) => expected.has((t.id || '').trim()));
+  }
+
+  /** Número de tags únicos mostrados en la card (filtrados por maletas a leer cuando aplica). */
+  get uniqueCountForMaletas(): number {
+    return this.tagListForMaletas.length;
   }
 
   /** Etiquetas leídas en la simulación (líneas o separadas por coma). */
@@ -131,16 +219,40 @@ export class Maleta implements OnInit, OnDestroy {
       .filter((s) => s.length > 0);
   }
 
-  /** Etiquetas consideradas como "leídas": simulación o lectura real del túnel según showSimulatedRead. */
-  get effectiveReadTags(): string[] {
+  /**
+   * Fuente única de tags leídos para la sección Maleta (semáforos) y para simular lectura.
+   * - Con sesión activa: tags del API (tagCounts).
+   * - Sin sesión pero con tagCounts en memoria (tras detener lectura): se mantienen para no perder lo leído.
+   * - Sin sesión y sin datos en memoria: simulación o vacío.
+   */
+  get allReadTags(): string[] {
+    if (this.currentSessionId) return Array.from(this.tagCounts.keys());
+    if (this.tagCounts.size > 0) return Array.from(this.tagCounts.keys());
     if (this.showSimulatedRead) return this.simulatedReadTags;
     return Array.from(this.tagCounts.keys());
   }
 
-  /** Conjunto de todos los RFIDs cargados en las maletas (maestros + productos). */
+  /**
+   * Etiquetas que cuentan para los semáforos de maletas: solo las leídas que están en "maletas a leer".
+   * Si no hay maletas seleccionadas, todas las leídas cuentan.
+   */
+  get effectiveReadTags(): string[] {
+    const read = this.allReadTags;
+    if (this.maletasParaLeer.length === 0) return read;
+    const expected = this.getExpectedTagUnion();
+    return read.filter((id) => expected.has((id || '').trim()));
+  }
+
+  /** Indica si un RFID leído pertenece a alguna maleta a leer (para marcar en la tabla). */
+  isTagInMaletas(tagId: string): boolean {
+    if (this.maletasParaLeer.length === 0) return true;
+    return this.getExpectedTagUnion().has((tagId || '').trim());
+  }
+
+  /** Conjunto de todos los RFIDs cargados en las maletas a leer (maestros + productos). */
   private getExpectedTagUnion(): Set<string> {
     const set = new Set<string>();
-    for (const m of this.maletas) {
+    for (const m of this.maletasParaLeer) {
       set.add((m.masterRfid || '').trim());
       for (const r of m.productRfids || []) {
         set.add((r || '').trim());
@@ -150,24 +262,35 @@ export class Maleta implements OnInit, OnDestroy {
     return set;
   }
 
-  /** True si se leyó al menos una etiqueta que no está cargada en ninguna maleta. */
-  get hasUnknownTagRead(): boolean {
-    if (this.maletas.length === 0) return false;
-    const expected = this.getExpectedTagUnion();
-    const read = this.effectiveReadTags;
-    return read.some((r) => r.length > 0 && !expected.has(r));
+  /** Total de RFIDs esperados (maletas a leer) para resumen X / Y. */
+  getExpectedTagUnionSize(): number {
+    return this.getExpectedTagUnion().size;
   }
 
-  /** Lista única de etiquetas leídas que no están en ninguna maleta (productos extras no enlistados). */
-  get extraUnlistedTags(): string[] {
-    if (this.maletas.length === 0) return [];
+  /** True si se leyó al menos una etiqueta que no está en ninguna maleta a leer. */
+  get hasUnknownTagRead(): boolean {
+    if (this.maletasParaLeer.length === 0) return false;
     const expected = this.getExpectedTagUnion();
-    const read = this.effectiveReadTags;
+    return this.allReadTags.some((r) => r.length > 0 && !expected.has(r));
+  }
+
+  /** Lista única de etiquetas leídas que no están en ninguna maleta a leer (extras / no enlistados). */
+  get extraUnlistedTags(): string[] {
+    if (this.maletasParaLeer.length === 0) return [];
+    const expected = this.getExpectedTagUnion();
     const unlisted = new Set<string>();
-    for (const r of read) {
+    for (const r of this.allReadTags) {
       if (r.length > 0 && !expected.has(r)) unlisted.add(r);
     }
     return Array.from(unlisted);
+  }
+
+  /** RFIDs de las maletas a leer que no se han leído (faltan por leer). */
+  get missingTagsInMaletas(): string[] {
+    if (this.maletasParaLeer.length === 0) return [];
+    const expected = this.getExpectedTagUnion();
+    const readSet = new Set(this.allReadTags.map((id) => (id || '').trim()));
+    return Array.from(expected).filter((id) => id.length > 0 && !readSet.has(id));
   }
 
   /** Estado del semáforo por maleta: rojo=algún producto caducado por fecha, azul=incompleta, verde=completa. */
@@ -198,7 +321,6 @@ export class Maleta implements OnInit, OnDestroy {
     return { masterRead, productsRead, productsTotal };
   }
 
-  /** True si la fecha de caducidad ya pasó (según fecha del sistema). */
   private isDateExpired(caducidad: string | null | undefined): boolean {
     if (!caducidad || typeof caducidad !== 'string') return false;
     const s = caducidad.trim();
@@ -242,19 +364,63 @@ export class Maleta implements OnInit, OnDestroy {
   toggleShowSimulatedRead(): void {
     this.showSimulatedRead = !this.showSimulatedRead;
     try {
-      localStorage.setItem(Maleta.SHOW_SIMULATED_KEY, String(this.showSimulatedRead));
+      localStorage.setItem(MaletaDb.SHOW_SIMULATED_KEY, String(this.showSimulatedRead));
     } catch {}
   }
 
-  /** Número de maletas completadas (semáforo verde). */
-  get completedMaletasCount(): number {
-    return this.maletas.filter((m) => this.getMaletaStatus(m) === 'green').length;
+  /** Maletas seleccionadas para lectura. Solo se muestran semáforos de las seleccionadas; si no hay ninguna, la lista queda vacía. */
+  get maletasParaLeer(): MaletaItem[] {
+    if (this.selectedMaletaIdsForReading.size === 0) return [];
+    return this.maletas.filter((m) => this.selectedMaletaIdsForReading.has(m.id));
   }
 
-  /** Semáforo general: rojo si alguna maleta tiene caducado; amarillo si hay producto extra no enlistado; azul/verde según maletas. */
+  /** Texto de búsqueda para filtrar la lista del dropdown de maletas a leer. */
+  maletasDropdownSearch = '';
+
+  /** Maletas filtradas por búsqueda para el checklist (nombre, RFID maestro). */
+  get maletasFilteredForChecklist(): MaletaItem[] {
+    const q = (this.maletasDropdownSearch || '').trim().toLowerCase();
+    if (!q) return this.maletas;
+    return this.maletas.filter(
+      (m) =>
+        (m.nombre || '').toLowerCase().includes(q) ||
+        (m.masterRfid || '').toLowerCase().includes(q)
+    );
+  }
+
+  isMaletaSelectedForReading(id: string): boolean {
+    return this.selectedMaletaIdsForReading.has(id);
+  }
+
+  toggleMaletaForReading(id: string): void {
+    const next = new Set(this.selectedMaletaIdsForReading);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    this.selectedMaletaIdsForReading = next;
+    this.cdr.detectChanges();
+  }
+
+  selectAllMaletasForReading(): void {
+    this.selectedMaletaIdsForReading = new Set(this.maletas.map((m) => m.id));
+    this.cdr.detectChanges();
+  }
+
+  clearMaletasForReading(): void {
+    this.selectedMaletaIdsForReading.clear();
+    this.selectedMaletaIdsForReading = new Set(this.selectedMaletaIdsForReading);
+    this.cdr.detectChanges();
+  }
+
+  /** Número de maletas completadas (semáforo verde) entre las seleccionadas para lectura. */
+  get completedMaletasCount(): number {
+    return this.maletasParaLeer.filter((m) => this.getMaletaStatus(m) === 'green').length;
+  }
+
+  /** Semáforo general: rojo si alguna maleta (seleccionada) tiene caducado; amarillo si hay producto extra; azul/verde según maletas a leer. */
   get generalSemaphoreStatus(): SemaphoreStatus {
-    if (this.maletas.length === 0) return 'green';
-    const statuses = this.maletas.map((m) => this.getMaletaStatus(m));
+    const list = this.maletasParaLeer;
+    if (list.length === 0) return 'green';
+    const statuses = list.map((m) => this.getMaletaStatus(m));
     if (statuses.some((s) => s === 'red')) return 'red';
     if (this.hasUnknownTagRead) return 'yellow';
     if (statuses.some((s) => s === 'yellow')) return 'yellow';
@@ -283,46 +449,225 @@ export class Maleta implements OnInit, OnDestroy {
     }
   }
 
-  /** URL por defecto para la vista Maleta (túnel). */
+  /** URL por defecto para la vista (túnel RFID). */
   private static readonly MALETA_API = 'https://rfid.leyluz.com';
 
-  /** True si no hay lectores (muestra timer de reintento). */
+  /** True si no hay lectores ni grupos (muestra timer de reintento). */
   get needsRetry(): boolean {
-    return !this.loading && this.api.getBaseUrl() !== '' && this.readers.length === 0;
+    return !this.loading && this.api.getBaseUrl() !== '' && this.readers.length === 0 && this.readerGroups.length === 0;
   }
 
   ngOnInit(): void {
-    this.api.setBaseUrl(Maleta.MALETA_API);
+    this.api.setBaseUrl(MaletaDb.MALETA_API);
     this.apiBaseUrl = this.api.getBaseUrl();
-    this.maletasApiUrl = this.maletasApi.getBaseUrl();
-    this.useBackend = !!this.maletasApiUrl;
+    const apiUrl = this.maletasApi.getBaseUrl() || environment.maletasApiUrl || '';
+    this.maletasApi.setBaseUrl(apiUrl);
     this.retryCountdown = this.retryIntervalSeconds;
     try {
-      const saved = localStorage.getItem(Maleta.SHOW_SIMULATED_KEY);
+      const saved = localStorage.getItem(MaletaDb.SHOW_SIMULATED_KEY);
       if (saved !== null) this.showSimulatedRead = saved === 'true';
     } catch {}
-    if (this.useBackend) this.loadMaletasFromApi();
-    else this.loadMaletasFromStorage();
+    this.loadMaletasFromApi();
+    this.loadAllProductos();
     this.loadReaders();
     this.loadAntennas();
     this.startRetryTimer();
   }
 
-  private loadMaletasFromStorage(): void {
-    try {
-      const raw = localStorage.getItem(Maleta.MALETAS_STORAGE_KEY);
-      if (raw) {
-        this.maletas = JSON.parse(raw);
-        this.maletas.forEach((m) => {
-          if ((m as { expired?: boolean }).expired && m.productRfids?.length) {
-            m.expiredProductRfids = [...m.productRfids];
-            delete (m as { expired?: boolean }).expired;
-          }
-        });
+  /** Selección de productos para borrado masivo. */
+  toggleProductoSelection(id: string): void {
+    if (this.selectedProductIds.has(id)) this.selectedProductIds.delete(id);
+    else this.selectedProductIds.add(id);
+    this.selectedProductIds = new Set(this.selectedProductIds);
+    this.cdr.detectChanges();
+  }
+
+  get allProductosSelected(): boolean {
+    return this.allProductos.length > 0 && this.allProductos.every((p) => this.selectedProductIds.has(p.id));
+  }
+
+  set allProductosSelected(v: boolean) {
+    if (v) this.allProductos.forEach((p) => this.selectedProductIds.add(p.id));
+    else this.selectedProductIds.clear();
+    this.selectedProductIds = new Set(this.selectedProductIds);
+    this.cdr.detectChanges();
+  }
+
+  selectAllProductos(): void {
+    this.allProductosSelected = true;
+  }
+
+  clearProductoSelection(): void {
+    this.selectedProductIds.clear();
+    this.selectedProductIds = new Set(this.selectedProductIds);
+    this.cdr.detectChanges();
+  }
+
+  get selectedProductosCount(): number {
+    return this.selectedProductIds.size;
+  }
+
+  /** Borrar productos seleccionados. */
+  deleteSelectedProductos(): void {
+    const n = this.selectedProductIds.size;
+    if (n === 0) return;
+    if (!confirm(`¿Eliminar ${n} producto(s) seleccionado(s) de la base de datos? Se quitarán de todas las maletas.`)) return;
+    const ids = Array.from(this.selectedProductIds);
+    from(ids)
+      .pipe(
+        concatMap((id) => this.maletasApi.deleteProducto(id)),
+        toArray()
+      )
+      .subscribe(() => {
+        this.selectedProductIds.clear();
+        this.selectedProductIds = new Set(this.selectedProductIds);
+        this.loadAllProductos();
+        this.loadMaletasFromApi();
+        this.cdr.detectChanges();
+      });
+  }
+
+  /** Borrar todos los productos. */
+  deleteAllProductos(): void {
+    if (this.allProductos.length === 0) return;
+    if (!confirm(`¿Eliminar TODOS los productos (${this.allProductos.length}) de la base de datos? Se quitarán de todas las maletas.`)) return;
+    from(this.allProductos)
+      .pipe(
+        concatMap((p) => this.maletasApi.deleteProducto(p.id)),
+        toArray()
+      )
+      .subscribe(() => {
+        this.selectedProductIds.clear();
+        this.selectedProductIds = new Set(this.selectedProductIds);
+        this.loadAllProductos();
+        this.loadMaletasFromApi();
+        this.cdr.detectChanges();
+      });
+  }
+
+  /** Carga todos los productos de la API para listado/edición. */
+  loadAllProductos(): void {
+    this.loadingProductos = true;
+    this.cdr.detectChanges();
+    this.maletasApi.getProductos().subscribe((list) => {
+      this.allProductos = list;
+      this.loadingProductos = false;
+      this.cdr.detectChanges();
+    });
+  }
+
+  openEditProducto(p: ProductoBackend): void {
+    this.showEditProducto = p;
+    this.editProductoRfid = p.rfid ?? '';
+    this.editProductoReferencia = p.referencia ?? '';
+    this.editProductoDescripcion = p.descripcion ?? '';
+    this.editProductoLote = p.lote ?? '';
+    this.editProductoCaducidad = p.caducidad ?? '';
+    this.cdr.detectChanges();
+  }
+
+  closeEditProducto(): void {
+    this.showEditProducto = null;
+    this.cdr.detectChanges();
+  }
+
+  saveEditProducto(): void {
+    const p = this.showEditProducto;
+    if (!p) return;
+    const rfid = this.editProductoRfid.trim();
+    if (!rfid) return;
+    this.maletasApi.updateProducto(p.id, {
+      rfid,
+      referencia: this.editProductoReferencia.trim() || undefined,
+      descripcion: this.editProductoDescripcion.trim() || undefined,
+      lote: this.editProductoLote.trim() || undefined,
+      caducidad: this.editProductoCaducidad.trim() || undefined,
+    }).subscribe((updated) => {
+      this.closeEditProducto();
+      this.loadAllProductos();
+      this.loadMaletasFromApi();
+      this.cdr.detectChanges();
+    });
+  }
+
+  deleteProductoConfirm(prod: ProductoBackend): void {
+    if (!confirm(`¿Eliminar el producto "${prod.rfid}" (${prod.referencia || 'sin ref'}) de la base de datos? Esta acción quitará el producto de todas las maletas.`)) return;
+    this.maletasApi.deleteProducto(prod.id).subscribe((ok) => {
+      if (ok) {
+        this.loadAllProductos();
+        this.loadMaletasFromApi();
+        this.cdr.detectChanges();
       }
-    } catch {
-      this.maletas = [];
-    }
+    });
+  }
+
+  /** Quitar un producto de una maleta (solo la relación; el producto sigue en la DB). */
+  quitarProductoDeMaletaConfirm(maletaId: string, prod: ProductoBackend): void {
+    if (!confirm(`¿Quitar "${prod.rfid}" de esta maleta? El producto seguirá en la base de datos.`)) return;
+    this.maletasApi.quitarProductoDeMaleta(maletaId, prod.id).subscribe((ok) => {
+      if (ok) {
+        this.loadMaletasFromApi();
+        this.loadAllProductos();
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  openEditMaleta(m: MaletaItem): void {
+    this.editingMaletaId = m.id;
+    this.editMaletaNombre = m.nombre ?? '';
+    this.editMaletaMasterRfid = m.masterRfid ?? '';
+    this.cdr.detectChanges();
+  }
+
+  closeEditMaleta(): void {
+    this.editingMaletaId = null;
+    this.cdr.detectChanges();
+  }
+
+  saveEditMaleta(): void {
+    const id = this.editingMaletaId;
+    if (!id) return;
+    const nombre = this.editMaletaNombre.trim();
+    const masterRfid = this.editMaletaMasterRfid.trim();
+    if (!masterRfid) return;
+    this.maletasApi.updateMaleta(id, { nombre: nombre || undefined, masterRfid }).subscribe((updated) => {
+      this.closeEditMaleta();
+      this.loadMaletasFromApi();
+      this.cdr.detectChanges();
+    });
+  }
+
+  openAddProductoToMaleta(maletaId: string): void {
+    this.maletaIdForAddProduct = maletaId;
+    this.addProductoRfid = '';
+    this.addProductoReferencia = '';
+    this.addProductoDescripcion = '';
+    this.addProductoLote = '';
+    this.addProductoCaducidad = '';
+    this.cdr.detectChanges();
+  }
+
+  closeAddProductoToMaleta(): void {
+    this.maletaIdForAddProduct = null;
+    this.cdr.detectChanges();
+  }
+
+  saveAddProductoToMaleta(): void {
+    const maletaId = this.maletaIdForAddProduct;
+    if (!maletaId || !this.addProductoRfid.trim()) return;
+    this.maletasApi.crearProductoEnMaleta(maletaId, {
+      rfid: this.addProductoRfid.trim(),
+      referencia: this.addProductoReferencia.trim() || undefined,
+      descripcion: this.addProductoDescripcion.trim() || undefined,
+      lote: this.addProductoLote.trim() || undefined,
+      caducidad: this.addProductoCaducidad.trim() || undefined,
+    }).subscribe(() => {
+      this.closeAddProductoToMaleta();
+      this.loadMaletasFromApi();
+      this.loadAllProductos();
+      this.cdr.detectChanges();
+    });
   }
 
   private loadMaletasFromApi(): void {
@@ -353,9 +698,7 @@ export class Maleta implements OnInit, OnDestroy {
   }
 
   private saveMaletasToStorage(): void {
-    try {
-      localStorage.setItem(Maleta.MALETAS_STORAGE_KEY, JSON.stringify(this.maletas));
-    } catch {}
+    /* MaletaDb siempre usa backend; no persistir en localStorage. */
   }
 
   openCreateMaleta(): void {
@@ -423,8 +766,7 @@ export class Maleta implements OnInit, OnDestroy {
   saveMaleta(): void {
     const master = this.newMaletaMasterRfid.trim();
     if (!master) return;
-    if (this.useBackend) {
-      this.maletasApi
+    this.maletasApi
         .createMaleta({
           nombre: this.newMaletaNombre.trim() || 'Sin nombre',
           masterRfid: master,
@@ -460,40 +802,15 @@ export class Maleta implements OnInit, OnDestroy {
               });
           });
         });
-      return;
-    }
-    const item: MaletaItem = {
-      id: `maleta_${Date.now()}`,
-      nombre: this.newMaletaNombre.trim() || undefined,
-      masterRfid: master,
-      productRfids: this.newMaletaProductos.map((p) => p.rfid),
-      createdAt: new Date().toISOString(),
-    };
-    this.maletas = [item, ...this.maletas];
-    this.saveMaletasToStorage();
-    this.closeCreateMaleta();
-    this.cdr.detectChanges();
   }
 
   deleteMaleta(item: MaletaItem, event?: Event): void {
     event?.preventDefault();
     event?.stopPropagation();
-    if (this.useBackend) {
-      this.maletasApi.deleteMaleta(item.id).subscribe((ok) => {
-        if (ok) this.loadMaletasFromApi();
-        this.cdr.detectChanges();
-      });
-      return;
-    }
-    this.maletas = this.maletas.filter((m) => m.id !== item.id);
-    this.saveMaletasToStorage();
-  }
-
-  saveMaletasApiUrl(): void {
-    this.maletasApi.setBaseUrl(this.maletasApiUrl);
-    this.useBackend = !!this.maletasApi.getBaseUrl();
-    if (this.useBackend) this.loadMaletasFromApi();
-    this.cdr.detectChanges();
+    this.maletasApi.deleteMaleta(item.id).subscribe((ok) => {
+      if (ok) this.loadMaletasFromApi();
+      this.cdr.detectChanges();
+    });
   }
 
   /** Al abrir una maleta, cargar productos con detalle (referencia, lote, caducidad) si usamos backend. */
@@ -513,37 +830,11 @@ export class Maleta implements OnInit, OnDestroy {
     return m.productos?.find((p) => p.rfid === rfid);
   }
 
-  /** Descarga maletas y relaciones en Excel (desde backend o desde lista local). */
+  /** Descarga todas las maletas y sus relaciones (productos) en un Excel. */
   exportToExcel(): void {
     this.excelError = '';
     this.excelLoading = true;
     this.cdr.detectChanges();
-    if (!this.useBackend) {
-      const rows: ExcelMaletaRow[] = [];
-      this.maletas.forEach((m) => {
-        const nombre = m.nombre || '';
-        const master = m.masterRfid || '';
-        (m.productRfids || []).forEach((rfid) => {
-          const p = m.productos?.find((x) => x.rfid === rfid);
-          rows.push({
-            nombreMaleta: nombre,
-            rfidMaestro: master,
-            rfidProducto: rfid,
-            referencia: p?.referencia || '',
-            descripcion: p?.descripcion || '',
-            lote: p?.lote || '',
-            caducidad: p?.caducidad || '',
-          });
-        });
-        if ((m.productRfids || []).length === 0) {
-          rows.push({ nombreMaleta: nombre, rfidMaestro: master, rfidProducto: '', referencia: '', descripcion: '', lote: '', caducidad: '' });
-        }
-      });
-      this.excelMaletas.downloadExcel(rows, `maletas_relaciones_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      this.excelLoading = false;
-      this.cdr.detectChanges();
-      return;
-    }
     this.maletasApi
       .getMaletas()
       .pipe(
@@ -594,7 +885,7 @@ export class Maleta implements OnInit, OnDestroy {
       });
   }
 
-  /** Carga masiva desde Excel. Con backend: crea en API. Sin backend: añade a lista local. */
+  /** Subir maletas con Excel: agrupa por nombre+RFID maestro y crea maletas + productos (asociaciones) en el backend. */
   onExcelFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input?.files?.[0];
@@ -617,24 +908,6 @@ export class Maleta implements OnInit, OnDestroy {
         if (groupList.length === 0) {
           this.excelLoading = false;
           this.excelError = 'No se encontraron maletas válidas en el Excel.';
-          this.cdr.detectChanges();
-          return;
-        }
-        if (!this.useBackend) {
-          const newMaletas: MaletaItem[] = groupList.map(([_, productRows]) => {
-            const first = productRows[0];
-            const productRfids = productRows.filter((r) => r.rfidProducto.trim()).map((r) => r.rfidProducto);
-            return {
-              id: `maleta_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-              nombre: first.nombreMaleta.trim() || undefined,
-              masterRfid: first.rfidMaestro.trim(),
-              productRfids,
-              createdAt: new Date().toISOString(),
-            };
-          });
-          this.maletas = [...newMaletas, ...this.maletas];
-          this.saveMaletasToStorage();
-          this.excelLoading = false;
           this.cdr.detectChanges();
           return;
         }
@@ -684,7 +957,7 @@ export class Maleta implements OnInit, OnDestroy {
 
   private finishExcelImport(): void {
     this.excelLoading = false;
-    if (this.useBackend) this.loadMaletasFromApi();
+    this.loadMaletasFromApi();
     this.cdr.detectChanges();
   }
 
@@ -704,7 +977,7 @@ export class Maleta implements OnInit, OnDestroy {
       '',
     ];
     for (const m of this.maletas) {
-      lines.push(Maleta.TXT_MAESTRO_PREFIX + m.masterRfid);
+      lines.push(MaletaDb.TXT_MAESTRO_PREFIX + m.masterRfid);
       for (const rfid of m.productRfids) {
         lines.push(rfid.trim());
       }
@@ -719,7 +992,7 @@ export class Maleta implements OnInit, OnDestroy {
     URL.revokeObjectURL(url);
   }
 
-  /** Carga maletas desde un .txt (reemplaza las actuales). */
+  /** Carga maletas desde un .txt (reemplaza solo en memoria; no se guardan en backend). */
   importMaletasFromFile(file: File): void {
     const reader = new FileReader();
     reader.onload = () => {
@@ -727,14 +1000,13 @@ export class Maleta implements OnInit, OnDestroy {
       const loaded = this.parseMaletasTxt(text);
       if (loaded.length > 0) {
         this.maletas = loaded;
-        this.saveMaletasToStorage();
         this.cdr.detectChanges();
       }
     };
     reader.readAsText(file, 'UTF-8');
   }
 
-  /** Llamado al elegir un archivo .txt para cargar maletas. */
+  /** Subir maletas desde .txt: formato MAESTRO <rfid> por línea, líneas siguientes = RFIDs de productos hasta el próximo MAESTRO. */
   onMaletasFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input?.files?.[0];
@@ -751,8 +1023,8 @@ export class Maleta implements OnInit, OnDestroy {
     let current: MaletaItem | null = null;
     for (const line of lines) {
       if (!line || line.startsWith('#')) continue;
-      if (line.startsWith(Maleta.TXT_MAESTRO_PREFIX)) {
-        const masterRfid = line.slice(Maleta.TXT_MAESTRO_PREFIX.length).trim();
+      if (line.startsWith(MaletaDb.TXT_MAESTRO_PREFIX)) {
+        const masterRfid = line.slice(MaletaDb.TXT_MAESTRO_PREFIX.length).trim();
         if (masterRfid) {
           current = {
             id: `maleta_${Date.now()}_${result.length}`,
@@ -774,6 +1046,8 @@ export class Maleta implements OnInit, OnDestroy {
     this.stopStatusPolling();
     this.stopUiRefresh();
     this.stopTagsPolling();
+    this.stopSessionPolling();
+    this.clearAutoStopTimer();
     this.disconnectRealtime();
   }
 
@@ -829,20 +1103,44 @@ export class Maleta implements OnInit, OnDestroy {
     this.api.getReaders().subscribe({
       next: (list) => {
         this.readers = list;
-        if (list.length && !this.selectedReaderId) {
+        if (list.length && !this.selectedReaderId && this.selectionMode === 'reader') {
           this.selectedReaderId = list[0].id;
           this.restartStatusPolling();
         }
         this.refreshStatus();
-        this.loading = false;
-        if (list.length === 0) {
-          this.retryCountdown = this.retryIntervalSeconds;
-        }
+        this.loadReaderGroups();
       },
       error: (err) => {
         this.error = err?.message || 'Error al cargar lectores';
         this.loading = false;
         this.retryCountdown = this.retryIntervalSeconds;
+      },
+    });
+  }
+
+  loadReaderGroups(): void {
+    if (!this.api.getBaseUrl()) {
+      this.loading = false;
+      return;
+    }
+    this.api.getReaderGroups().subscribe({
+      next: (list) => {
+        this.readerGroups = list;
+        if (this.readers.length === 0 && list.length > 0 && !this.selectedGroupId) {
+          this.selectionMode = 'group';
+          this.selectedGroupId = list[0].id;
+          this.restartStatusPolling();
+        }
+        if (this.readers.length === 0 && list.length === 0) {
+          this.retryCountdown = this.retryIntervalSeconds;
+        }
+        this.loading = false;
+        this.refreshStatus();
+      },
+      error: () => {
+        this.readerGroups = [];
+        this.loading = false;
+        if (this.readers.length === 0) this.retryCountdown = this.retryIntervalSeconds;
       },
     });
   }
@@ -856,30 +1154,59 @@ export class Maleta implements OnInit, OnDestroy {
   }
 
   onReaderChange(): void {
+    this.selectedGroupId = '';
+    this.selectionMode = 'reader';
+    this.readerGroupStatus = null;
+    if (!this.selectedReaderId && this.readers.length > 0) this.selectedReaderId = this.readers[0].id;
+    this.refreshStatus();
+    this.restartStatusPolling();
+  }
+
+  onGroupChange(): void {
+    this.selectedReaderId = '';
+    this.selectionMode = 'group';
+    this.readerStatus = null;
+    if (!this.selectedGroupId && this.readerGroups.length > 0) this.selectedGroupId = this.readerGroups[0].id;
+    this.refreshStatus();
+    this.restartStatusPolling();
+  }
+
+  onSelectionModeChange(mode: 'reader' | 'group'): void {
+    this.selectionMode = mode;
+    if (mode === 'reader') {
+      this.selectedGroupId = '';
+      this.readerGroupStatus = null;
+      if (!this.selectedReaderId && this.readers.length > 0) this.selectedReaderId = this.readers[0].id;
+    } else {
+      this.selectedReaderId = '';
+      this.readerStatus = null;
+      if (!this.selectedGroupId && this.readerGroups.length > 0) this.selectedGroupId = this.readerGroups[0].id;
+    }
     this.refreshStatus();
     this.restartStatusPolling();
   }
 
   refreshStatus(): void {
+    if (this.currentSessionId) return;
+    if (this.selectionMode === 'group') {
+      this.readerStatus = null;
+      this.readerGroupStatus = null;
+      return;
+    }
+    this.readerGroupStatus = null;
     if (!this.selectedReaderId) {
       this.readerStatus = null;
       return;
     }
     this.api.getReaderStatus(this.selectedReaderId).subscribe({
-      next: (s) => {
-        this.readerStatus = s;
-        if (s?.reading && !this.sseConnected) {
-          this.connectRealtime();
-          this.startUiRefresh();
-        }
-      },
+      next: (s) => (this.readerStatus = s),
       error: () => (this.readerStatus = null),
     });
   }
 
   restartStatusPolling(): void {
     this.stopStatusPolling();
-    if (!this.selectedReaderId) return;
+    if (!this.hasReaderOrGroupSelected) return;
     this.statusPolling = setInterval(() => this.refreshStatus(), 5000);
   }
 
@@ -902,7 +1229,6 @@ export class Maleta implements OnInit, OnDestroy {
     }
   }
 
-  /** Actualiza tagCounts con una lista de IDs (desde polling GET /api/readers/:id/tags). */
   private mergeTagsIntoTagCounts(tagIds: string[]): void {
     const now = new Date().toLocaleTimeString('es-MX');
     for (const id of tagIds) {
@@ -933,9 +1259,36 @@ export class Maleta implements OnInit, OnDestroy {
             });
           }
         },
-        error: () => { /* endpoint opcional; no hacer nada si falla */ },
+        error: () => { /* endpoint opcional */ },
       });
     }, 2000);
+  }
+
+  private startSessionPolling(): void {
+    this.stopSessionPolling();
+    const sessionId = this.currentSessionId;
+    if (!sessionId) return;
+    const fetchSession = (): void => {
+      this.api.getSession(sessionId).subscribe({
+        next: (view) => {
+          this.ngZone.run(() => {
+            if (view.epcs && view.epcs.length > 0) this.mergeTagsIntoTagCounts(view.epcs);
+            if (view.totalReads != null) this.totalReads = view.totalReads;
+            this.cdr.detectChanges();
+          });
+        },
+        error: () => { /* sesión puede haber cerrado */ },
+      });
+    };
+    fetchSession();
+    this.sessionPollingInterval = setInterval(fetchSession, 1000);
+  }
+
+  private stopSessionPolling(): void {
+    if (this.sessionPollingInterval) {
+      clearInterval(this.sessionPollingInterval);
+      this.sessionPollingInterval = null;
+    }
   }
 
   private stopTagsPolling(): void {
@@ -945,30 +1298,84 @@ export class Maleta implements OnInit, OnDestroy {
     }
   }
 
-  startReading(): void {
-    if (!this.selectedReaderId || this.isReading) return;
+  /**
+   * Inicia una sesión de lectura.
+   * @param clearFirst si true, borra los RFID en memoria y empieza de cero; si false, continúa sumando a lo ya leído.
+   */
+  startReading(clearFirst = true): void {
+    if (!this.hasReaderOrGroupSelected || this.isReading) return;
     this.error = '';
-    this.connectRealtime();
-    this.startUiRefresh();
-    this.startTagsPolling();
-    this.api.startReader(this.selectedReaderId).subscribe({
-      next: () => this.refreshStatus(),
+    const body = this.selectionMode === 'group'
+      ? { groupId: this.selectedGroupId }
+      : { readerId: this.selectedReaderId };
+    this.api
+      .startSession(body)
+      .pipe(
+        catchError((e) => {
+          if (e?.status === 409) {
+            return this.api.forceResetSessions(body).pipe(
+              switchMap(() => this.api.startSession(body))
+            );
+          }
+          return throwError(() => e);
+        })
+      )
+      .subscribe({
+        next: (res) => {
+          if (clearFirst) {
+            this.tagCounts.clear();
+            this.totalReads = 0;
+          }
+          this.currentSessionId = res.sessionId;
+          this.connectRealtime();
+          this.startUiRefresh();
+          this.startSessionPolling();
+          this.startAutoStopTimer();
+          this.cdr.detectChanges();
+        },
+        error: (e) => {
+          const msg = e?.error?.message ?? e?.error?.error ?? e?.message;
+          this.error = msg && typeof msg === 'string' ? msg : (e?.statusText || 'Error al iniciar sesión');
+          this.cdr.detectChanges();
+        },
+      });
+  }
+
+  /** Continúa la lectura sumando a los RFID ya leídos (no borra la memoria). */
+  continueReading(): void {
+    this.startReading(false);
+  }
+
+  stopReading(): void {
+    const sessionId = this.currentSessionId;
+    if (!sessionId) return;
+    this.error = '';
+    this.clearAutoStopTimer();
+    this.api.stopSession(sessionId).subscribe({
+      next: () => {
+        this.currentSessionId = null;
+        this.stopSessionPolling();
+        this.stopUiRefresh();
+        this.disconnectRealtime();
+        this.cdr.detectChanges();
+      },
       error: (e) => (this.error = e?.error?.message || e?.message || 'Error'),
     });
   }
 
-  stopReading(): void {
-    if (!this.selectedReaderId) return;
-    this.error = '';
-    this.api.stopReader(this.selectedReaderId).subscribe({
-      next: () => {
-        this.refreshStatus();
-        this.stopUiRefresh();
-        this.stopTagsPolling();
-        this.disconnectRealtime();
-      },
-      error: (e) => (this.error = e?.error?.message || e?.message || 'Error'),
-    });
+  private startAutoStopTimer(): void {
+    this.clearAutoStopTimer();
+    this.autoStopTimer = setTimeout(() => {
+      this.autoStopTimer = null;
+      this.ngZone.run(() => this.stopReading());
+    }, this.autoStopReadingMs);
+  }
+
+  private clearAutoStopTimer(): void {
+    if (this.autoStopTimer) {
+      clearTimeout(this.autoStopTimer);
+      this.autoStopTimer = null;
+    }
   }
 
   resetReader(): void {
@@ -1097,7 +1504,7 @@ export class Maleta implements OnInit, OnDestroy {
     const base = this.api.getBaseUrl();
     if (!base) return;
 
-    const readerId = this.selectedReaderId || undefined;
+    const readerId = this.selectionMode === 'reader' ? (this.selectedReaderId || undefined) : undefined;
     const wsUrl = this.api.getWebSocketUrl();
     const wsFull = readerId ? `${wsUrl}?readerId=${encodeURIComponent(readerId)}` : wsUrl;
 

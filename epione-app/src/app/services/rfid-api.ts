@@ -25,6 +25,45 @@ export interface ReaderStatus {
   [key: string]: unknown;
 }
 
+export interface ReaderGroup {
+  id: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
+export interface ReaderGroupStatus {
+  reading?: boolean;
+  [key: string]: unknown;
+}
+
+/** Respuesta de POST /api/sessions/start */
+export interface StartSessionResponse {
+  sessionId: string;
+  readerIds?: string[];
+}
+
+/** Vista de sesión (GET /api/sessions/:id). Sesiones de grupo: sessionId empieza por grp-. */
+export interface SessionView {
+  sessionId: string;
+  groupId?: string;
+  readerIds?: string[];
+  status?: string;
+  startTime?: string;
+  epcs?: string[];
+  epcCount?: number;
+  totalReads?: number;
+  [key: string]: unknown;
+}
+
+/** Respuesta de POST /api/sessions/force-reset */
+export interface ForceResetResponse {
+  message?: string;
+  wasGroupSession?: boolean;
+  stoppedReaderIds?: string[];
+  groupId?: string;
+  [key: string]: unknown;
+}
+
 const API_BASE_KEY = 'rfid_api_base_url';
 
 @Injectable({ providedIn: 'root' })
@@ -113,6 +152,61 @@ export class RfidApi {
     if (antenna) params.set('antenna', antenna);
     const qs = params.toString();
     return this.url('/api/realtime/events') + (qs ? `?${qs}` : '');
+  }
+
+  /**
+   * Tags leídos por el lector (polling). La API debe devolver { tags: string[] }.
+   * Si el gateway no tiene SSE/WebSocket, puede exponer GET /api/readers/:id/tags
+   * y la vista usará este método para actualizar los semáforos.
+   */
+  getReaderTags(readerId: string): Observable<{ tags: string[] }> {
+    return this.http.get<{ tags: string[] }>(this.url(`/api/readers/${readerId}/tags`));
+  }
+
+  /**
+   * Inicia una sesión de lectura.
+   * body.groupId → sesión en todos los lectores del grupo (sessionId grp-<uuid>).
+   * body.readerId → sesión en un solo lector.
+   */
+  startSession(body: { readerId?: string; groupId?: string }): Observable<StartSessionResponse> {
+    return this.http.post<StartSessionResponse>(this.url('/api/sessions/start'), body);
+  }
+
+  /**
+   * Fuerza el reinicio de sesiones (evitar 409 Conflict).
+   * body.readerId → detiene la sesión de ese lector.
+   * body.groupId → detiene la sesión del grupo y sus lectores.
+   * body {} o sin body → detiene todas las sesiones activas.
+   */
+  forceResetSessions(body?: { readerId?: string; groupId?: string }): Observable<ForceResetResponse> {
+    return this.http.post<ForceResetResponse>(this.url('/api/sessions/force-reset'), body ?? {});
+  }
+
+  /** Detiene la sesión (lector o grupo). Para grupo (grp-...) detiene todos los lectores del grupo. */
+  stopSession(sessionId: string): Observable<unknown> {
+    return this.http.post(this.url(`/api/sessions/${encodeURIComponent(sessionId)}/stop`), {});
+  }
+
+  /**
+   * Vista de la sesión. Si sessionId es de grupo (grp-...), devuelve vista agregada:
+   * epcs, epcCount, totalReads de todos los lectores del grupo.
+   */
+  getSession(sessionId: string): Observable<SessionView> {
+    return this.http.get<SessionView>(this.url(`/api/sessions/${encodeURIComponent(sessionId)}`));
+  }
+
+  /** Indica si el sessionId corresponde a una sesión de grupo (formato grp-<uuid>). */
+  isGroupSession(sessionId: string): boolean {
+    return typeof sessionId === 'string' && sessionId.startsWith('grp-');
+  }
+
+  /** Grupos de lectores (listado para el selector). GET /api/groups */
+  getReaderGroups(): Observable<ReaderGroup[]> {
+    return this.http.get<ReaderGroup[]>(this.url('/api/groups'));
+  }
+
+  getReaderGroup(id: string): Observable<ReaderGroup> {
+    return this.http.get<ReaderGroup>(this.url(`/api/groups/${id}`));
   }
 
   /** URL para WebSocket: ws://rfid.leyluz.com/ws/events */

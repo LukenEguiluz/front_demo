@@ -14,6 +14,28 @@
   font-weight: 600;
 }
 
+.page-subtitle {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 4px 0 0;
+}
+
+.excel-format-hint {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.excel-format-hint summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.excel-format-hint p {
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
 .card {
   background: #fff;
   border-radius: 10px;
@@ -41,6 +63,469 @@
 .config-body {
   margin-top: 12px;
   padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.config-card-bottom {
+  margin-top: 24px;
+}
+
+.selector-row {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.reader-group-selectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.reader-group-selectors .field select {
+  min-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.reading-controls-top {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.reading-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.reading-controls-primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.reading-controls-primary .btn-large {
+  min-height: 44px;
+  padding: 12px 16px;
+}
+
+.reading-controls-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.reading-using-label {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.reader-maintenance {
+  margin-top: 12px;
+}
+
+.reader-maintenance-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Todos los productos (DB) */
+.card-productos-db .card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.card-productos-db .card-title .material-icons {
+  font-size: 20px;
+}
+
+.productos-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-left: 4px;
+}
+
+.productos-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.productos-toolbar .checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.productos-selected {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.productos-db-table .col-check {
+  width: 40px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.productos-db-table .col-check input {
+  cursor: pointer;
+}
+
+.maletas-excel-hint {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 8px 0 0;
+  line-height: 1.4;
+}
+
+/* Dropdown checklist: maletas a leer */
+.maletas-dropdown-card {
+  margin-top: 12px;
+}
+
+.maletas-dropdown-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.maletas-dropdown-summary .material-icons {
+  font-size: 20px;
+}
+
+.maletas-dropdown-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+.maletas-dropdown-body {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.maletas-dropdown-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.maletas-dropdown-search .material-icons {
+  font-size: 18px;
+  color: #6b7280;
+}
+
+.maletas-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.maletas-dropdown-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.maletas-checklist-empty {
+  margin: 12px 0 0;
+  padding: 12px;
+  color: #6b7280;
+  font-size: 13px;
+  text-align: center;
+  background: #f9fafb;
+  border-radius: 6px;
+}
+
+.maletas-list-hint {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  color: #6b7280;
+  font-size: 14px;
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+
+.maletas-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.maletas-checklist-item {
+  padding: 6px 0;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.maletas-checklist-item:last-child {
+  border-bottom: none;
+}
+
+.maletas-checklist-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.maletas-checklist-label input {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.maleta-nombre-inline {
+  font-weight: 500;
+  min-width: 140px;
+}
+
+.maleta-master-inline {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.maleta-count-inline {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* DB: maletas y relaciones (editar, añadir/quitar productos) */
+.maletas-db-edit {
+  margin-top: 12px;
+}
+
+.maleta-db-card {
+  margin-bottom: 12px;
+}
+
+.maleta-db-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-weight: 500;
+}
+
+.maleta-db-summary .material-icons {
+  font-size: 20px;
+}
+
+.maleta-db-summary .btn-delete {
+  margin-left: auto;
+}
+
+.maleta-db-productos {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.edit-maleta-form {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.edit-maleta-form label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin: 8px 0 4px;
+}
+
+.edit-maleta-form label:first-child {
+  margin-top: 0;
+}
+
+.edit-maleta-form input {
+  width: 100%;
+  max-width: 320px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.edit-maleta-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.maleta-db-productos-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.maleta-db-producto-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-bottom: 1px solid #f3f4f6;
+  font-size: 14px;
+}
+
+.maleta-db-producto-item .tag-id {
+  font-family: ui-monospace, monospace;
+  min-width: 120px;
+}
+
+.maleta-db-producto-item .btn {
+  margin-left: auto;
+}
+
+.add-producto-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 0;
+}
+
+.add-producto-form input {
+  padding: 6px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+  min-width: 80px;
+}
+
+.add-producto-form input[placeholder="RFID"] {
+  min-width: 140px;
+}
+
+.productos-db-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.productos-db-table th,
+.productos-db-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.productos-db-table th {
+  font-weight: 600;
+  color: #374151;
+  background: #f9fafb;
+}
+
+.productos-db-table .tag-id {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.acciones-cell {
+  white-space: nowrap;
+}
+
+.acciones-cell .btn {
+  margin-right: 6px;
+}
+
+.acciones-cell .btn .material-icons {
+  font-size: 16px;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+/* Modal editar producto */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modal-title {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.modal-card .form-row {
+  margin-bottom: 12px;
+}
+
+.modal-card .form-row label {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.modal-card .form-row input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
   border-top: 1px solid #e5e7eb;
 }
 
@@ -272,6 +757,99 @@
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid #e5e7eb;
+}
+
+.maletas-extras-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.extras-block {
+  flex: 1;
+  min-width: 200px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.extras-block summary {
+  list-style: none;
+}
+
+.extras-block summary::-webkit-details-marker {
+  display: none;
+}
+
+.extras-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  user-select: none;
+}
+
+.extras-summary-label {
+  font-weight: 600;
+  color: #374151;
+}
+
+.extras-summary-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.extras-missing .extras-summary {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
+
+.extras-missing .extras-tag-list,
+.extras-missing .extras-empty {
+  border: 1px solid #fde68a;
+  border-top: none;
+  padding: 12px;
+  margin: 0;
+  background: #fffbeb;
+}
+
+.extras-unlisted .extras-summary {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+}
+
+.extras-unlisted .extras-tag-list,
+.extras-unlisted .extras-empty {
+  border: 1px solid #fecaca;
+  border-top: none;
+  padding: 12px;
+  margin: 0;
+  background: #fef2f2;
+}
+
+.extras-empty {
+  margin: 0;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.extras-tag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+}
+
+.extras-tag-list li {
+  padding: 4px 0;
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
 }
 
 .maleta-item {
@@ -985,6 +1563,29 @@
   word-break: break-all;
 }
 
+.tags-table tr.tag-not-in-maletas td {
+  background: #fef3c7;
+  border-bottom-color: #fde68a;
+}
+
+.tag-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tag-in-maleta {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.tag-not-in-maleta {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .tag-time {
   color: #6b7280;
   font-size: 13px;
@@ -1091,12 +1692,54 @@ th {
 @media (max-width: 768px) {
   .maleta-page {
     max-width: 100%;
-    padding: 0;
+    padding: 0 10px;
     overflow-x: hidden;
+    box-sizing: border-box;
   }
 
   .page-header {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
+  }
+
+  /* Botones Iniciar / Continuar / Detener: apilados y táctiles en móvil */
+  .reading-controls-top {
+    margin-bottom: 12px;
+    padding: 14px;
+  }
+
+  .reading-controls-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .reading-controls-primary {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .reading-controls-primary .btn-large {
+    width: 100%;
+    justify-content: center;
+    min-height: 48px;
+    padding: 14px 16px;
+    font-size: 15px;
+  }
+
+  .reading-controls-primary .btn-large .material-icons {
+    font-size: 22px;
+  }
+
+  .reading-controls-meta {
+    justify-content: center;
+    padding-top: 8px;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .reading-using-label {
+    width: 100%;
+    text-align: center;
+    font-size: 13px;
   }
 
   .page-title {
@@ -1359,6 +2002,58 @@ th {
 }
 
 @media (max-width: 480px) {
+  .maleta-page {
+    padding: 0 8px;
+  }
+
+  .reading-controls-primary .btn-large {
+    min-height: 48px;
+    font-size: 14px;
+  }
+
+  .maletas-dropdown-summary {
+    padding: 12px 10px;
+    font-size: 14px;
+  }
+
+  .maletas-dropdown-body {
+    padding-top: 10px;
+  }
+
+  .maletas-search-input {
+    font-size: 16px;
+    padding: 12px;
+    min-height: 48px;
+  }
+
+  .maletas-dropdown-actions {
+    flex-direction: column;
+  }
+
+  .maletas-dropdown-actions .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .maletas-checklist-label {
+    flex-wrap: wrap;
+    padding: 10px 0;
+  }
+
+  .maletas-extras-section {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .extras-block {
+    min-width: 0;
+  }
+
+  .extras-summary {
+    padding: 12px 10px;
+    font-size: 13px;
+  }
+
   .maleta-read-summary {
     min-width: 0;
   }
@@ -1369,5 +2064,27 @@ th {
 
   .progress-bar {
     height: 8px;
+  }
+
+  .config-body .input-group {
+    flex-direction: column;
+  }
+
+  .config-body .input-group input,
+  .config-body .input-group .btn {
+    width: 100%;
+    min-height: 48px;
+    box-sizing: border-box;
+  }
+
+  .reader-group-selectors {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reader-group-selectors .field select {
+    min-width: 0;
+    width: 100%;
+    min-height: 48px;
   }
 }
