@@ -86,6 +86,58 @@ export class ExcelMaletasService {
   }
 
   /**
+   * Convierte un valor de caducidad (texto o número serial de Excel) a fecha ISO YYYY-MM-DD para guardar/importar.
+   * Si es un número serial de Excel (ej. 46387), lo convierte a fecha; si no, devuelve el texto normalizado.
+   */
+  static caducidadToIso(val: string | number | null | undefined): string {
+    const raw = val === null || val === undefined ? '' : val;
+    const n = typeof raw === 'number' ? raw : Number(String(raw).trim());
+    if (Number.isFinite(n) && n >= 1 && n <= 300000) {
+      const date = ExcelMaletasService.excelSerialToDate(n);
+      return date ? date.toISOString().slice(0, 10) : String(raw).trim();
+    }
+    return String(raw).trim();
+  }
+
+  /**
+   * Para mostrar en UI: si el valor es un número serial de Excel, devuelve la fecha en formato YYYY-MM-DD; si no, el valor tal cual.
+   */
+  static caducidadToDisplay(val: string | number | null | undefined): string {
+    const s = val === null || val === undefined ? '' : String(val).trim();
+    if (!s) return '–';
+    const n = Number(s);
+    if (Number.isFinite(n) && n >= 1 && n <= 300000) {
+      const date = ExcelMaletasService.excelSerialToDate(n);
+      return date ? date.toISOString().slice(0, 10) : s;
+    }
+    return s;
+  }
+
+  /** Convierte número serial de Excel (1 = 1900-01-01) a Date. */
+  private static excelSerialToDate(serial: number): Date | null {
+    if (!Number.isFinite(serial) || serial < 1) return null;
+    const utcMs = (serial - 25569) * 86400 * 1000;
+    const d = new Date(utcMs);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /**
+   * Devuelve un Date para comparar caducidad (sirve para serial Excel o texto de fecha).
+   * Si no se puede interpretar, devuelve null.
+   */
+  static caducidadToDate(val: string | number | null | undefined): Date | null {
+    if (val === null || val === undefined) return null;
+    const s = String(val).trim();
+    if (!s) return null;
+    const n = Number(s);
+    if (Number.isFinite(n) && n >= 1 && n <= 300000) {
+      return ExcelMaletasService.excelSerialToDate(n);
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /**
    * Normaliza un encabezado para comparación (minúsculas, sin acentos, espacios colapsados, trim).
    */
   private static normHeader(h: string): string {
@@ -175,6 +227,7 @@ export class ExcelMaletasService {
     const rows: ExcelMaletaRow[] = [];
     for (let i = 1; i < rawRows.length; i++) {
       const row = rawRows[i] ?? [];
+      const rawCaducidad = idxCaducidad >= 0 ? row[idxCaducidad] : '';
       rows.push({
         nombreMaleta: get(row, idxNombre),
         rfidMaestro: get(row, idxRfidMaestro),
@@ -182,7 +235,7 @@ export class ExcelMaletasService {
         referencia: get(row, idxReferencia),
         descripcion: get(row, idxDescripcion),
         lote: get(row, idxLote),
-        caducidad: get(row, idxCaducidad),
+        caducidad: ExcelMaletasService.caducidadToIso(rawCaducidad),
       });
     }
     return rows;
@@ -192,12 +245,18 @@ export class ExcelMaletasService {
    * Obtiene el valor de un campo buscando la clave que coincida (normalizada).
    */
   private static getByKey(row: Record<string, string | number>, ...keyCandidates: string[]): string {
+    const v = ExcelMaletasService.getRawByKey(row, ...keyCandidates);
+    return String(v ?? '').trim();
+  }
+
+  /** Obtiene el valor en bruto (string o number) para una clave. */
+  private static getRawByKey(row: Record<string, string | number>, ...keyCandidates: string[]): string | number {
     const norm = (s: string) => ExcelMaletasService.normHeader(s);
     const targets = keyCandidates.map(norm);
     for (const [key, value] of Object.entries(row)) {
       const n = norm(key);
       if (targets.some((t) => n === t || n.includes(t) || t.includes(n)))
-        return String(value ?? '').trim();
+        return value ?? '';
     }
     return '';
   }
@@ -215,7 +274,7 @@ export class ExcelMaletasService {
       referencia: ExcelMaletasService.getByKey(r, 'Referencia', 'referencia'),
       descripcion: ExcelMaletasService.getByKey(r, 'Descripción', 'descripcion'),
       lote: ExcelMaletasService.getByKey(r, 'Lote', 'lote'),
-      caducidad: ExcelMaletasService.getByKey(r, 'Caducidad', 'caducidad'),
+      caducidad: ExcelMaletasService.caducidadToIso(ExcelMaletasService.getRawByKey(r, 'Caducidad', 'caducidad')),
     }));
   }
 }

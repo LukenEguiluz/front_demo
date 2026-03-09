@@ -198,26 +198,20 @@ export class Maleta implements OnInit, OnDestroy {
     return { masterRead, productsRead, productsTotal };
   }
 
-  /** True si la fecha de caducidad ya pasó (según fecha del sistema). */
+  /** Formato de caducidad para mostrar (convierte serial Excel a fecha legible). */
+  formatCaducidad(val: string | null | undefined): string {
+    return ExcelMaletasService.caducidadToDisplay(val);
+  }
+
+  /** True si la fecha de caducidad ya pasó (según fecha del sistema). Acepta texto de fecha o número serial de Excel. */
   private isDateExpired(caducidad: string | null | undefined): boolean {
-    if (!caducidad || typeof caducidad !== 'string') return false;
-    const s = caducidad.trim();
-    if (!s) return false;
-    let date: Date;
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-      date = new Date(s);
-    } else if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s)) {
-      const [d, M, y] = s.split(/[\/\-]/);
-      const year = y.length === 2 ? 2000 + parseInt(y, 10) : parseInt(y, 10);
-      date = new Date(year, parseInt(M, 10) - 1, parseInt(d, 10));
-    } else {
-      date = new Date(s);
-    }
-    if (isNaN(date.getTime())) return false;
+    const date = ExcelMaletasService.caducidadToDate(caducidad);
+    if (!date) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    date.setHours(0, 0, 0, 0);
-    return date.getTime() <= today.getTime();
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() <= today.getTime();
   }
 
   /** Indica si un producto está caducado según su campo caducidad y la fecha del sistema. */

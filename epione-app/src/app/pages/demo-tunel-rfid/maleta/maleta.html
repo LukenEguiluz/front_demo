@@ -182,8 +182,9 @@
                   <span class="tag-id">{{ p.rfid }}</span>
                   @if (useBackend) {
                     <span class="product-meta">Ref: {{ p.referencia || '–' }}</span>
+                    <span class="product-meta">Desc: {{ p.descripcion || '–' }}</span>
                     <span class="product-meta">Lote: {{ p.lote || '–' }}</span>
-                    <span class="product-meta">Cad: {{ p.caducidad || '–' }}</span>
+                    <span class="product-meta">Cad: {{ formatCaducidad(p.caducidad) }}</span>
                   }
                   <button type="button" class="btn-icon" (click)="removeProduct(p.rfid)" title="Quitar">×</button>
                 </li>
@@ -306,7 +307,7 @@
                 <li class="expected-item" [class.read]="isTagRead(rfid)" [class.caducado]="isProductExpired(m, rfid)">
                   <span class="tag-id">{{ rfid }}</span>
                   @if (getProductoInfo(m, rfid); as prod) {
-                    <span class="producto-meta">Ref: {{ prod.referencia || '–' }} · Lote: {{ prod.lote || '–' }} · Cad: {{ prod.caducidad || '–' }}</span>
+                    <span class="producto-meta">Ref: {{ prod.referencia || '–' }} · Desc: {{ prod.descripcion || '–' }} · Lote: {{ prod.lote || '–' }} · Cad: {{ formatCaducidad(prod.caducidad) }}</span>
                   }
                   <span class="read-badge" [class.leido]="isTagRead(rfid)" [class.no-leido]="!isTagRead(rfid)">
                     <span class="material-icons">{{ isTagRead(rfid) ? 'check_circle' : 'cancel' }}</span>
