@@ -1,5 +1,6 @@
 export const environment = {
   production: true,
   rfidGatewayUrl: 'http://rfid.leyluz.com',
-  maletasApiUrl: 'http://localhost:3000',
+  /** Vacío = mismo origen; en Docker nginx hace proxy de /api al backend. */
+  maletasApiUrl: '',
 };

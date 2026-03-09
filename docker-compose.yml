@@ -1,0 +1,27 @@
+services:
+  backend:
+    build: ./backend
+    container_name: maletas-backend
+    environment:
+      - PORT=4001
+    volumes:
+      - maletas-data:/app/data
+    networks:
+      - app
+
+  frontend:
+    build: ./epione-app
+    container_name: maletas-frontend
+    ports:
+      - "4000:80"
+    depends_on:
+      - backend
+    networks:
+      - app
+
+volumes:
+  maletas-data:
+
+networks:
+  app:
+    driver: bridge
